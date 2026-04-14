@@ -57,6 +57,16 @@ def swithing_t_r(latest_device_port):#latest_device_port это T ИЛИ R n-о�
         generator.query("outp:state 0")
         device_port = f"T{int(device_port[1]) + 1}"
 
+list_port = [[1, 1], [1, 1]] #Нужно добавить функцию для чтения ini файлов, из них в этот массив должны складываться какие R и T мы хотим посмотреть 
+def switching_port(list_port):
+    for i in range(list_port):
+        for j in range(list_port[i]):
+            if list_port[i][j] == 1 and j == 0:
+                device_port = f"T{i + 1}"
+            elif list_port[i][j] == 1 and j == 1:
+                device_port = f"R{i + 1}"    
+    
+
 try:
     device_or_generator_func('TCPIP0::localhost::5026::SOCKET')
     device_or_generator_func('TCPIP0::localhost::5025::SOCKET')
