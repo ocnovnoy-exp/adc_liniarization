@@ -39,32 +39,47 @@ def device_setup():
 
 generator_port = "R2"
 device_port = "T1"
-def swithing_t_r(latest_device_port):#latest_device_port это T ИЛИ R n-ого порядка до котрого мы доходим, задаётся оно в настройках программы либо в ini файле для каждого device
-    if device_port == latest_device_port:#Функция swithing_t_r нужна для переключения T и R котроые мы ихмеряем, то есть мы идем для device T1, R1, T2, R2 и тд, а для generator R2, T2, R2, T2 и тд
-        return
-    generator.query("calc:par1:def R2")
-    generator.query("calc:par1:spor 2")
+
+def switching_t_r(port):
+    generator.query("syst:pres")
+    generator.query("calc:par1:def R2")#В логах мы сначала передаем obzor что он R2, а затем что он T2, можно ли обойтись только тем что говорим, что он T2?
+    generator.query("calc:par1:spor 2")# !!!!! надо разобарться что с этой командой, где 1, а где 2 ставится
     device.query("syst:pres")
-    device.query(f"calc:par1:def {device_port}")
-    device.query("calc:par1:spor 2")
-    if device_port[0] == "T":
-        device_port = f"R{device_port[1]}"
-    else:
+    device.query(f"calc:par1:def {port}")
+    if port[0] == "R":
+        device.query("calc:par1:spor 1")
         generator.query("trigger:source BUS")
         generator.query("init:cont 1")
         generator.query("trigger:wait WAIT")
         generator.query("calc:par1:def T2")
         generator.query("outp:state 0")
-        device_port = f"T{int(device_port[1]) + 1}"
+    elif port[0] == "T":
+        device.query("calc:par1:spor 2")
+        generator.query("trigger:source BUS")
+        generator.query("init:cont 1")
+        generator.query("trigger:wait WAIT")
+        generator.query("outp:state 1")
+    device.query("sens:rosc:sour EXT")
+    device.query("outp:state 1")
+    device.query("trigger:source BUS")
+    device.query("init:cont 1")
+    device.query("trigger:wait WAIT")
+    device.query("serv:rec:corr:state 0")
+    device.query("serv:rec:corr:state?") #В логах за чем то эта и строчка выше повторяются по 2 раза не уверен насколько это необходимо
+
+    
+
 
 list_port = [[1, 1], [1, 1]] #Нужно добавить функцию для чтения ini файлов, из них в этот массив должны складываться какие R и T мы хотим посмотреть 
-def switching_port(list_port):
+def switching_port(list_port):#Функция swithing_port нужна для переключения T и R котроые мы ихмеряем, то есть мы идем для device T1, R1, T2, R2 и тд, а для generator R2, T2, R2, T2 и тд
     for i in range(list_port):
         for j in range(list_port[i]):
             if list_port[i][j] == 1 and j == 0:
                 device_port = f"T{i + 1}"
+                switching_t_r(device_port)
             elif list_port[i][j] == 1 and j == 1:
-                device_port = f"R{i + 1}"    
+                device_port = f"R{i + 1}"   
+                switching_t_r(device_port) 
     
 
 try:
