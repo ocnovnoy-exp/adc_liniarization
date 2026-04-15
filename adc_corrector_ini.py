@@ -35,7 +35,7 @@ def device_setup():
     device.write("trigger:wait WAIT")
     device.write("sens:rosc:sour EXT")
     device.write("SENS:SWE:TYPE SEGM")
-    device.write(f"SENS:SEGM:DATA {",".join(list_of_segment_data)}")
+    device.write(f"SENS:SEGM:DATA {",".join(str(num) for num in list_of_segment_data)}")
     device.write("trig:sing")
 
 generator_port = "R2"
@@ -74,16 +74,17 @@ def switching_t_r(port):
 
 list_port = [[1, 1], [1, 1]] #Нужно добавить функцию для чтения ini файлов, из них в этот массив должны складываться какие R и T мы хотим посмотреть 
 def switching_port(list_port):#Функция swithing_port нужна для переключения T и R котроые мы ихмеряем, то есть мы идем для device T1, R1, T2, R2 и тд, а для generator R2, T2, R2, T2 и тд
-    for i in range(list_port):
+    for i in range(len(list_port)):
         if list_port[i][0] == 1 or list_port[i][0] == 1:
             input(f"Подключите 2 порт {generator_idn[1]} с {i} портом {device_idn[1]}, а после введите любой символ")
-        for j in range(list_port[i]):
+        for j in range(len(list_port[i])):
             if list_port[i][j] == 1 and j == 0:
                 device_port = f"T{i + 1}"
                 switching_t_r(device_port)
             elif list_port[i][j] == 1 and j == 1:
                 device_port = f"R{i + 1}"   
                 switching_t_r(device_port) 
+
     
 
 try:
