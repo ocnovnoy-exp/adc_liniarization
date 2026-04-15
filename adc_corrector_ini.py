@@ -18,61 +18,65 @@ def device_or_generator_func(adres):#Эта функция нам нужна т�
     return 
 
 def initialization():#Функиция для инициализации приборов
-    print(device.query("*IDN?"))
+    dev_idn, gen_idn = [], []
+    print(dev_idn = device.query("*IDN?").split(", "))
     quantity_of_ports = device.query(":SERV:PORT:COUN?")
     print(quantity_of_ports)
     print(device.query("syst:err?"))
-    print(generator.query("*IDN?"))
+    print(gen_idn = generator.query("*IDN?").split(", "))
     print(generator.query("syst:err?"))
-    return 
+    return dev_idn, gen_idn
 
 list_of_segment_data = [5,0,1,0,0,0,2,936000000,936000000,2,1000,936000000,936000000,2,10000]
 def device_setup():
-    device.query("syst:pres")
-    device.query("trigger:source BUS")
-    device.query("init:cont 1")
-    device.query("trigger:wait WAIT")
-    device.query("sens:rosc:sour EXT")
-    device.query("SENS:SWE:TYPE SEGM")
-    device.query(f"SENS:SEGM:DATA {list_of_segment_data}")
-    device.query("trig:sing")
+    device.write("syst:pres")
+    device.write("trigger:source BUS")
+    device.write("init:cont 1")
+    device.write("trigger:wait WAIT")
+    device.write("sens:rosc:sour EXT")
+    device.write("SENS:SWE:TYPE SEGM")
+    device.write(f"SENS:SEGM:DATA {",".join(list_of_segment_data)}")
+    device.write("trig:sing")
 
 generator_port = "R2"
 device_port = "T1"
 
 def switching_t_r(port):
-    generator.query("syst:pres")
-    generator.query("calc:par1:def R2")#В логах мы сначала передаем obzor что он R2, а затем что он T2, можно ли обойтись только тем что говорим, что он T2?
-    generator.query("calc:par1:spor 2")# !!!!! надо разобарться что с этой командой, где 1, а где 2 ставится
-    device.query("syst:pres")
-    device.query(f"calc:par1:def {port}")
+    generator.write("syst:pres")
+    generator.write("calc:par1:def R2")#В логах мы сначала передаем obzor что он R2, а затем что он T2, можно ли обойтись только тем что говорим, что он T2?
+    generator.write("calc:par1:spor 2")# !!!!! надо разобарться что с этой командой, где 1, а где 2 ставится
+    device.write("syst:pres")
+    device.write(f"calc:par1:def {port}")
     if port[0] == "R":
-        device.query("calc:par1:spor 1")
-        generator.query("trigger:source BUS")
-        generator.query("init:cont 1")
-        generator.query("trigger:wait WAIT")
-        generator.query("calc:par1:def T2")
-        generator.query("outp:state 0")
+        device.write("calc:par1:spor 1")
+        generator.write("trigger:source BUS")
+        generator.write("init:cont 1")
+        generator.write("trigger:wait WAIT")
+        generator.write("calc:par1:def T2")
+        generator.write("outp:state 0")
     elif port[0] == "T":
-        device.query("calc:par1:spor 2")
-        generator.query("trigger:source BUS")
-        generator.query("init:cont 1")
-        generator.query("trigger:wait WAIT")
-        generator.query("outp:state 1")
-    device.query("sens:rosc:sour EXT")
-    device.query("outp:state 1")
-    device.query("trigger:source BUS")
-    device.query("init:cont 1")
-    device.query("trigger:wait WAIT")
-    device.query("serv:rec:corr:state 0")
-    device.query("serv:rec:corr:state?") #В логах за чем то эта и строчка выше повторяются по 2 раза не уверен насколько это необходимо
+        device.write("calc:par1:spor 2")
+        generator.write("trigger:source BUS")
+        generator.write("init:cont 1")
+        generator.write("trigger:wait WAIT")
+        generator.write("outp:state 1")
+    device.write("sens:rosc:sour EXT")
+    device.write("outp:state 1")
+    device.write("trigger:source BUS")
+    device.write("init:cont 1")
+    device.write("trigger:wait WAIT")
+    device.write("serv:rec:corr:state 0")
+    device.query("serv:rec:corr:state?")
+    device.write("serv:rec:lin:state 0")# Если запускать программу в режиме проверки, то тут будет не 0, а 1
+    device.query("serv:rec:lin:state?")
 
-    
-
+#Изменение мощности происходит просто поределением дельты, и уже после этого мы идем от наибольшей мозности отнимая значение дельты умноженной на номер шага 
 
 list_port = [[1, 1], [1, 1]] #Нужно добавить функцию для чтения ini файлов, из них в этот массив должны складываться какие R и T мы хотим посмотреть 
 def switching_port(list_port):#Функция swithing_port нужна для переключения T и R котроые мы ихмеряем, то есть мы идем для device T1, R1, T2, R2 и тд, а для generator R2, T2, R2, T2 и тд
     for i in range(list_port):
+        if list_port[i][0] == 1 or list_port[i][0] == 1:
+            input(f"Подключите 2 порт {generator_idn[1]} с {i} портом {device_idn[1]}, а после введите любой символ")
         for j in range(list_port[i]):
             if list_port[i][j] == 1 and j == 0:
                 device_port = f"T{i + 1}"
@@ -93,62 +97,7 @@ try:
     generator.timeout = 5000
     generator.write_termination = '\n'   # Отправлять \n после каждой команды
     generator.read_termination = '\n'    # Ждать \n в конце ответа
-    initialization()#device_or_generator принимает значение 1 
+    device_idn, generator_idn = initialization() 
 except pyvisa.errors.VisaIOError as e:
     print("Ошибка связанная с портом, pyvisa или чем то подобным")
 
-# SN9000-10 15.866082s syst:pres
-# SN9000-10 15.866114s trigger:source BUS
-# SN9000-10 15.866128s init:cont 1
-# SN9000-10 15.866140s trigger:wait WAIT
-# SN9000-10 15.866152s sens:rosc:sour EXT
-
-# Obzor804 15.894331s syst:err?
-# Obzor804 15.896987s 0,"No error"
-
-# SN9000-10 16.374300s SENS:SWE:TYPE SEGM
-# SN9000-10 16.374401s SENS:SEGM:DATA 5,0,1,0,0,0,2,936000000,936000000,2,1000,936000000,936000000,2,10000
-# SN9000-10 16.876104s trig:sing
-# SN9000-10 16.876177s *OPC?
-# SN9000-10 16.891749s 1
-
-# Obzor804 21.871429s syst:pres
-# Obzor804 21.871487s calc:par1:def R2
-# Obzor804 21.871500s calc:par1:spor 2
-
-# SN9000-10 22.338480s syst:pres
-# SN9000-10 22.338528s calc:par1:def T1
-# SN9000-10 22.338542s calc:par1:spor 2
-
-# Obzor804 22.370561s trigger:source BUS
-# Obzor804 22.370599s init:cont 1
-# Obzor804 22.370612s trigger:wait WAIT
-# Obzor804 22.370624s outp:state 1
-
-# SN9000-10 22.838235s sens:rosc:sour EXT
-# SN9000-10 22.838270s outp:state 1
-# SN9000-10 22.838281s trigger:source BUS
-# SN9000-10 22.838293s init:cont 1
-# SN9000-10 22.838303s trigger:wait WAIT
-
-# SN9000-10 22.838315s serv:rec:corr:state 0
-# SN9000-10 22.838351s serv:rec:corr:state?
-# SN9000-10 22.943659s 0
-# SN9000-10 22.943824s serv:rec:lin:state 0
-# SN9000-10 22.943881s serv:rec:lin:state?
-# SN9000-10 22.944895s 0
-
-
-# Условие перехода. При получении команды SCPI, если источник триггера Шина.
-# SN9000-10 10.698360s trigger:source BUS(Выбирает источник триггера для запуска сканирования. INTernal Внутренний
-# EXTernal Внешний (аппаратный вход триггера)
-# MANual Ручной (интерфейс пользователя)
-# BUS Шина (программный запуск))
-# SN9000-10 10.698389s init:cont 1 (Устанавливает или считывает состояние ВКЛ/ВЫКЛ для режима инициации
-# канала "Непрерывно".)
-# SN9000-10 10.698416s trigger:wait WAIT
-# Obzor804 14.340112s trigger:source BUS
-# Obzor804 14.340147s init:cont 1
-# Obzor804 14.340158s trigger:wait WAIT
-# Obzor804 14.340170s outp:state 1
-# SN9000-10 14.827869s outp:state 1
