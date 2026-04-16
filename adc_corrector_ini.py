@@ -70,7 +70,11 @@ def switching_t_r(port):
     device.write("serv:rec:lin:state 0")# Если запускать программу в режиме проверки, то тут будет не 0, а 1
     device.query("serv:rec:lin:state?")
 
-#Изменение мощности происходит просто поределением дельты, и уже после этого мы идем от наибольшей мозности отнимая значение дельты умноженной на номер шага 
+power_up = -45.000000
+power_down = 10.000000 #Эти 2 значения тоже должны браться из ini файла
+def grid_of_powers(power_up: float, power_down: float, points_of_power: int = 125)#Изменение мощности происходит просто определением дельты, и уже после этого мы идем от наибольшей мозности отнимая значение дельты умноженной на номер шага 
+    delta_power = (power_up - power_down) / (points_of_power - 1)
+    return [power_up - delta_power * i for i in range(points_of_power)]
 
 list_port = [[1, 1], [1, 1]] #Нужно добавить функцию для чтения ini файлов, из них в этот массив должны складываться какие R и T мы хотим посмотреть 
 def switching_port(list_port):#Функция swithing_port нужна для переключения T и R котроые мы ихмеряем, то есть мы идем для device T1, R1, T2, R2 и тд, а для generator R2, T2, R2, T2 и тд
