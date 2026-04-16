@@ -7,6 +7,7 @@ print(rm.list_resources('TCPIP?*')) #'?*' это фильтр необходим
 device_generator_adreses = ["", ""] #Список для записи адрессов generator и device
 list_of_adc = ["SN9000-10"] #Список для устройств которые являются device, а не generator, и это значит мы должны спрашивать количество их портов
 
+
 def device_or_generator_func(adres):#Эта функция нам нужна только для того что бы определить что за устройство мы подключили, generator или device
     instrument = rm.open_resource(adres)
     if instrument.query("*IDN?").split(", ")[1] in list_of_adc:#Тут мы разделяем строку которую нам возвращает *IDN?, и смотрим что это за устройство, есть лиона в списке list_of_adc
@@ -72,9 +73,10 @@ def switching_t_r(port):
 
 power_up = -45.000000
 power_down = 10.000000 #Эти 2 значения тоже должны браться из ini файла
-def grid_of_powers(power_up: float, power_down: float, points_of_power: int = 125)#Изменение мощности происходит просто определением дельты, и уже после этого мы идем от наибольшей мозности отнимая значение дельты умноженной на номер шага 
+def grid_of_powers(power_up: float, power_down: float, points_of_power: int = 125):#Изменение мощности происходит просто определением дельты, и уже после этого мы идем от наибольшей мозности отнимая значение дельты умноженной на номер шага 
     delta_power = (power_up - power_down) / (points_of_power - 1)
     return [power_up - delta_power * i for i in range(points_of_power)]
+
 
 list_port = [[1, 1], [1, 1]] #Нужно добавить функцию для чтения ini файлов, из них в этот массив должны складываться какие R и T мы хотим посмотреть 
 def switching_port(list_port):#Функция swithing_port нужна для переключения T и R котроые мы ихмеряем, то есть мы идем для device T1, R1, T2, R2 и тд, а для generator R2, T2, R2, T2 и тд
