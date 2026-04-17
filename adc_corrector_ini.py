@@ -110,14 +110,21 @@ def grid_of_powers(power_up: float, power_down: float, points_of_power: int = 12
     delta_power = (power_up - power_down) / (points_of_power - 1)
     return [power_up - delta_power * i for i in range(points_of_power)]
 
-#SENS:SEGM:DATA 100,10 или 3 зависит от ini файла, там 3 сегмента и для каждого своё значение
-def setting_scan_type(instrument, powers_grid, num_of_point, ini_conf):#Функция устанавливает тип сканирования(SENS:SWE:TYPE SEGM) и задаёт массив данных для сегментного типа сканирования(SENS:SEGM:DATA)
-    instrument.write(f"SOURce1:POWer {powers_grid[num_of_point]}")
-    for zones_conf in ini_conf.get("zones"):
+def zone_for_point(num_of_point: int, ini_conf: dict):#Функця определяет какое bandwidth для этой точки(в каком из 3 сегментов находится точка)
+    for zones_conf in ini_conf.get("zones"):#функция возвращает настройки для сегмента в котором находится точка
         if num_of_point >= zones_conf.get("begin") and num_of_point < zones_conf.get("end"):
-            ifbw = zones_conf.get("bandwidth")
+            return zones_conf
+        raise ValueError(f"Не найдена зона для точки {num_of_point}")
+
+#SENS:SEGM:DATA 100,10 или 3 зависит от ini файла, там 3 сегмента и для каждого своё значение
+def set_segment(instrument, frequency_hz: float, ifbw: int):
     instrument.write("SENS:SWE:TYPE SEGM")
-    instrument.write(f"SENS:SEGM:DATA 5,0,1,0,0,0,2,{ini_conf.get("frequency")},{ini_conf.get("frequency")},2,{ifbw},{ini_conf.get("frequency")},{ini_conf.get("frequency")},2,{ifbw}")
+    instrument.write(
+        "SENS:SEGM:DATA "
+        f"5,0,1,0,0,0,2,"
+        f"{frequency_hz:.0f},{frequency_hz:.0f},2,{ifbw},"
+        f"{frequency_hz:.0f},{frequency_hz:.0f},2,{ifbw}"
+    )
 
 #выбор того кто передаёт source1:power зависит от того кто является R
 
