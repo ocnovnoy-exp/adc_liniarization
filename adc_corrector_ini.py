@@ -1,4 +1,5 @@
 import pyvisa
+from configparser import ConfigParser
 
 rm = pyvisa.ResourceManager() # '@py' необходим для принудительного использования бэкенда не NI-VISA, а pyvisa-py
 print(rm.list_resources('TCPIP?*')) #'?*' это фильтр необходимый для обнаружения нашего адреса устройства, так как бех него будут искаться только приборы, чьи имена заканчиваются на ::INSTR, а наше заканчивется на ::SOCKET
@@ -17,6 +18,38 @@ def device_or_generator_func(adres):#Эта функция нам нужна т�
     device_generator_adreses[0] = adres
     instrument.close()
     return 
+
+def load_ini(path: str):
+    cfg = ConfigParser()
+    cfg.optionxform = str
+    cfg.read(path, encoding="utf-8")
+
+    return {
+        "frequency": cfg.getfloat("Settings", "Frequency"),
+        "device_frequency": cfg.getfloat("Settings", "DeviceFrequency"),
+        "power_up": cfg.getfloat("Settings", "PowerUpLimit"),
+        "power_down": cfg.getfloat("Settings", "PowerDownLimit"),
+        "zones": [
+            {
+                "bandwidth": cfg.getint("AverageSettingsSection1", "AverageBand"),
+                "begin": cfg.getint("AverageSettingsSection1", "AverageBeginPoint"),
+                "end": cfg.getint("AverageSettingsSection1", "AverageEndPoint"),
+                "avg": cfg.getint("AverageSettingsSection1", "AverageCount"),
+            },
+            {
+                "bandwidth": cfg.getint("AverageSettingsSection2", "AverageBand"),
+                "begin": cfg.getint("AverageSettingsSection2", "AverageBeginPoint"),
+                "end": cfg.getint("AverageSettingsSection2", "AverageEndPoint"),
+                "avg": cfg.getint("AverageSettingsSection2", "AverageCount"),
+            },
+            {
+                "bandwidth": cfg.getint("AverageSettingsSection3", "AverageBand"),
+                "begin": cfg.getint("AverageSettingsSection3", "AverageBeginPoint"),
+                "end": cfg.getint("AverageSettingsSection3", "AverageEndPoint"),
+                "avg": cfg.getint("AverageSettingsSection3", "AverageCount"),
+            },
+        ],
+    }
 
 def initialization():#Функиция для инициализации приборов
     dev_idn, gen_idn = [], []
@@ -77,6 +110,17 @@ def grid_of_powers(power_up: float, power_down: float, points_of_power: int = 12
     delta_power = (power_up - power_down) / (points_of_power - 1)
     return [power_up - delta_power * i for i in range(points_of_power)]
 
+#SENS:SEGM:DATA 100,10 или 3 зависит от ini файла, там 3 сегмента и для каждого своё значение
+def setting_scan_type(instrument, powers_grid, num_of_point, ini_conf):#Функция устанавливает тип сканирования(SENS:SWE:TYPE SEGM) и задаёт массив данных для сегментного типа сканирования(SENS:SEGM:DATA)
+    instrument.write(f"SOURce1:POWer {powers_grid[num_of_point]}")
+    for zones_conf in ini_conf.get("zones"):
+        if num_of_point >= zones_conf.get("begin") and num_of_point < zones_conf.get("end"):
+            ifbw = zones_conf.get("bandwidth")
+    instrument.write("SENS:SWE:TYPE SEGM")
+    instrument.write(f"SENS:SEGM:DATA 5,0,1,0,0,0,2,{ini_conf.get("frequency")},{ini_conf.get("frequency")},2,{ifbw},{ini_conf.get("frequency")},{ini_conf.get("frequency")},2,{ifbw}")
+
+#выбор того кто передаёт source1:power зависит от того кто является R
+
 
 list_port = [[1, 1], [1, 1]] #Нужно добавить функцию для чтения ini файлов, из них в этот массив должны складываться какие R и T мы хотим посмотреть 
 def switching_port(list_port):#Функция swithing_port нужна для переключения T и R котроые мы ихмеряем, то есть мы идем для device T1, R1, T2, R2 и тд, а для generator R2, T2, R2, T2 и тд
@@ -105,6 +149,7 @@ try:
     generator.write_termination = '\n'   # Отправлять \n после каждой команды
     generator.read_termination = '\n'    # Ждать \n в конце ответа
     device_idn, generator_idn = initialization() 
+    ini_config = load_ini("C:\adc-corrector-develop\adc-corrector-develop\System\SN9000-10_2.ini")
 except pyvisa.errors.VisaIOError as e:
     print("Ошибка связанная с портом, pyvisa или чем то подобным")
 
