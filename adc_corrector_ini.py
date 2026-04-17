@@ -141,7 +141,7 @@ def set_segment(instrument, frequency_hz: float, ifbw: int):
 def taking_fdat(instrument):#Эта функция берет список после CALC:DATA:FDAT?
     syst_err(instrument)
     instrument.write("calc:parameter1:select")
-    values = instrument.query("CALC:DATA:FDAT?")
+    values = [float(i.strip()) for i in instrument.query("CALC:DATA:FDAT?").split(",")]
     return values
 
 def setting_scan_type(instrument, powers_grid: list, num_of_point: int, ini_conf: dict):#Функция необходимая для задания мощности и отправки SENS:SEGM:DATA 2 раза, с bandwidth = 1000 и той что мы берем их .ini файла
@@ -151,12 +151,17 @@ def setting_scan_type(instrument, powers_grid: list, num_of_point: int, ini_conf
     set_segment(instrument, ini_conf["frequency"], 1000)
     set_segment(instrument, ini_conf["frequency"], zone["bandwidth"])
 
-def sens_data(instrument, power_up, power_down):#выбор того кому передаём source1:power зависит от того кто является R
+#выбор того кому передаём source1:power зависит от того кто является R
+def sens_data(instrument, power_up, power_down):#Эта функция нужна для того что бы пройтись по всем мощностям и записать значения
     power_grid = grid_of_powers(power_up, power_down, points_of_power=125)
     for n in range(len(power_grid)):
         setting_scan_type(instrument, power_grid, n, ini_config)
         dev_val = taking_fdat(device)
         gen_val = taking_fdat(generator)
+        dev_gen_val = [[], []]
+        dev_gen_val[0].append(dev_val)
+        dev_gen_val[1].append(gen_val)
+    return dev_gen_val
 
 list_port = [[1, 1], [1, 1]] #Нужно добавить функцию для чтения ini файлов, из них в этот массив должны складываться какие R и T мы хотим посмотреть 
 def switching_port(list_port):#Функция swithing_port нужна для переключения T и R котроые мы измеряем, то есть мы идем для device T1, R1, T2, R2 и тд, а для generator R2, T2, R2, T2 и тд
@@ -185,6 +190,8 @@ try:
     generator.read_termination = '\n'    # Ждать \n в конце ответа
     device_idn, generator_idn = initialization() 
     ini_config = load_ini(r"C:\adc-corrector-develop\adc-corrector-develop\System\SN9000-10_2.ini")
+    all_values = sens_data(generator, ini_config["power_up"], ini_config["power_up"])
+    print(all_values)
 except pyvisa.errors.VisaIOError as e:
     print("Ошибка связанная с портом, pyvisa или чем то подобным")
 
