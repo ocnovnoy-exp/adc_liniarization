@@ -8,6 +8,12 @@ print(rm.list_resources('TCPIP?*')) #'?*' это фильтр необходим
 device_generator_adreses = ["", ""] #Список для записи адрессов generator и device
 list_of_adc = ["SN9000-10"] #Список для устройств которые являются device, а не generator, и это значит мы должны спрашивать количество их портов
 
+def open_scpi_resource(address: str):
+    inst = rm.open_resource(address)
+    inst.timeout = 5000
+    inst.write_termination = "\n" # Отправлять \n после каждой команды
+    inst.read_termination = "\n" # Ждать \n в конце ответа
+    return inst
 
 def device_or_generator_func(adres):#Эта функция нам нужна только для того что бы определить что за устройство мы подключили, generator или device
     instrument = rm.open_resource(adres)
@@ -237,14 +243,8 @@ def switching_port(list_port):#Функция swithing_port нужна для п
 try:
     device_or_generator_func('TCPIP0::localhost::5026::SOCKET')
     device_or_generator_func('TCPIP0::localhost::5025::SOCKET')
-    device = rm.open_resource(device_generator_adreses[1])
-    generator = rm.open_resource(device_generator_adreses[0])
-    device.timeout = 5000
-    device.write_termination = '\n'   # Отправлять \n после каждой команды
-    device.read_termination = '\n'    # Ждать \n в конце ответа
-    generator.timeout = 5000
-    generator.write_termination = '\n'   # Отправлять \n после каждой команды
-    generator.read_termination = '\n'    # Ждать \n в конце ответа
+    device = open_scpi_resource(device_generator_adreses[1])
+    generator = open_scpi_resource(device_generator_adreses[0])
     device_idn, generator_idn = initialization() 
     ini_config = load_ini(r"C:\adc-corrector-develop\adc-corrector-develop\System\SN9000-10_2.ini")
     all_values = sens_data(generator, ini_config["power_up"], ini_config["power_up"])
