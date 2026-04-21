@@ -59,11 +59,13 @@ def load_ini(path: str):#Нужно добавить снятие данных �
 
 def initialization():#Функиция для инициализации приборов
     dev_idn, gen_idn = [], []
-    print(dev_idn = device.query("*IDN?").split(", "))
+    dev_idn = device.query("*IDN?").split(", ")
+    print(dev_idn)
     quantity_of_ports = device.query(":SERV:PORT:COUN?")
     print(quantity_of_ports)
     print(device.query("syst:err?"))
-    print(gen_idn = generator.query("*IDN?").split(", "))
+    gen_idn = generator.query("*IDN?").split(", ")
+    print(gen_idn)
     print(generator.query("syst:err?"))
     return dev_idn, gen_idn
 
@@ -115,10 +117,10 @@ def wait_opc(instrument):
     if answer_on_opc != "1":
         raise RuntimeError(f"Неожиданный ответ на *OPC?, а именно: {answer_on_opc}")
 
-def syst_err(instrument):
-    answer_on_opc = instrument.query("syst:err?").strip()
-    if answer_on_opc != '0,"No error"':
-        raise RuntimeError(f"Неожиданный ответ от syst:err?: {answer_on_opc}")
+# def syst_err(instrument):
+#     answer_on_opc = instrument.query("syst:err?").strip()
+#     if answer_on_opc != '0,"No error"':
+#         raise RuntimeError(f"Неожиданный ответ от syst:err?: {answer_on_opc}")
 
 power_down = -45.000000
 power_up = 10.000000 #Эти 2 значения тоже должны браться из ini файла
@@ -128,7 +130,10 @@ def grid_of_powers(power_up: float, power_down: float, points_of_power: int = 12
 
 def zone_for_point(num_of_point: int, ini_conf: dict):#Функця определяет какое bandwidth для этой точки(в каком из 3 сегментов находится точка)
     for zones_conf in ini_conf.get("zones"):#функция возвращает настройки для сегмента в котором находится точка
-        if zones_conf.get("begin") <= num_of_point < zones_conf.get("end"):
+        if zones_conf.get("begin") <= num_of_point <= zones_conf.get("end"):
+            if num_of_point == zones_conf.get("begin"):
+                device.write("sens1:aver:stat 0")
+                generator.write("sens1:aver:stat 0")
             return zones_conf
     raise ValueError(f"Не найдена зона для точки {num_of_point}")
 
@@ -145,9 +150,10 @@ def set_segment(instrument, frequency_hz: float, ifbw: int):
     wait_opc(instrument)
 
 def taking_fdat(instrument):#Эта функция берет список после CALC:DATA:FDAT?
-    syst_err(instrument)
+#    syst_err(instrument)
     instrument.write("calc:parameter1:select")
     values = [float(i.strip()) for i in instrument.query("CALC:DATA:FDAT?").split(",")]
+    print(instrument, values[0])
     return values
 
 def reduce_fdat(val):
@@ -159,6 +165,7 @@ def reduce_fdat(val):
 def setting_scan_type(instrument, powers_grid: list, num_of_point: int, ini_conf: dict):#Функция необходимая для задания мощности и отправки SENS:SEGM:DATA 2 раза, с bandwidth = 1000 и той что мы берем их .ini файла
     power = powers_grid[num_of_point]
     zone = zone_for_point(num_of_point, ini_conf)
+    print(f"SOURce1:POWer {power:.6e}       {zone['bandwidth']}      {num_of_point}")
     instrument.write(f"SOURce1:POWer {power:.6e}")
     set_segment(instrument, ini_conf["frequency"], 1000)
     set_segment(instrument, ini_conf["frequency"], zone["bandwidth"])
@@ -167,6 +174,7 @@ def setting_scan_type(instrument, powers_grid: list, num_of_point: int, ini_conf
 dev_gen_val = [[], []]
 def sens_data(instrument, power_up, power_down):#Эта функция нужна для того что бы пройтись по всем мощностям и записать значения
     power_grid = grid_of_powers(power_up, power_down, points_of_power=125)
+    print(power_grid)
     for n in range(len(power_grid)):
         setting_scan_type(instrument, power_grid, n, ini_config)
         dev_val = taking_fdat(device)
@@ -178,10 +186,8 @@ def sens_data(instrument, power_up, power_down):#Эта функция нужн�
 def compute_correction(etalon_i, measured_i, etalon_0, measured_0): #Формула correction из старой программы: corr_i = (etalon_i - measured_i) - (etalon_0 - measured_0)
     return (etalon_i - measured_i) - (etalon_0 - measured_0)
 
-
 def db_to_linear(db_value: float): #Перед записью в прибор старая программа переводит dB в линейный вид
     return 10 ** (db_value / 20.0)
-
 
 def build_correction_array(power_db_list, correction_db_list): #Формирует конечный массив для записи в прибор(перед записью, power и correction переводятся из dB в linear)
     if len(power_db_list) != len(correction_db_list):
@@ -190,9 +196,7 @@ def build_correction_array(power_db_list, correction_db_list): #Формируе
     for power_db, corr_db in zip(power_db_list, correction_db_list):
         result.append(db_to_linear(power_db))
         result.append(db_to_linear(corr_db))
-
     return result
-
 
 def format_array_for_scpi_old_style(values): #Форматирует массив как старая программа.
     return ",".join(f"{float(value):.6E}" for value in values)
@@ -216,15 +220,12 @@ def send_correction_array(device, trace_name: str, correction_array, dry_run: bo
     print("Trace:", trace_name)
     print("Receiver number:", receiver_number)
     print("Количество чисел:", len(correction_array))
-    print("Длина команды:", len(command))
-    print("Первые 200 символов команды:")
-    print(command[:200])
     if dry_run:
         print("DRY RUN: команда не отправлена в прибор.")
         return
     device.write(command)
     #time.sleep(4.0)# Старый код ждал 4 секунды после записи.
-    syst_err(device, "after write correction array")
+    #syst_err(device)#, "after write correction array"
 
 list_port = [[1, 1], [1, 1]] #Нужно добавить функцию для чтения ini файлов, из них в этот массив должны складываться какие R и T мы хотим посмотреть 
 def switching_port(list_port):#Функция swithing_port нужна для переключения T и R котроые мы измеряем, то есть мы идем для device T1, R1, T2, R2 и тд, а для generator R2, T2, R2, T2 и тд
@@ -241,14 +242,17 @@ def switching_port(list_port):#Функция swithing_port нужна для п
     return device_port
 
 try:
-    device_or_generator_func('TCPIP0::localhost::5026::SOCKET')
-    device_or_generator_func('TCPIP0::localhost::5025::SOCKET')
-    device = open_scpi_resource(device_generator_adreses[1])
-    generator = open_scpi_resource(device_generator_adreses[0])
+    # device_or_generator_func('TCPIP0::localhost::5026::SOCKET')
+    # device_or_generator_func('TCPIP0::localhost::5025::SOCKET')
+    device = open_scpi_resource('TCPIP0::localhost::5026::SOCKET')#device_generator_adreses[1]
+    generator = open_scpi_resource('TCPIP0::localhost::5025::SOCKET')#device_generator_adreses[0]
     device_idn, generator_idn = initialization() 
     ini_config = load_ini(r"C:\adc-corrector-develop\adc-corrector-develop\System\SN9000-10_2.ini")
-    all_values = sens_data(generator, ini_config["power_up"], ini_config["power_up"])
+    device_setup()
+    switching_t_r("T1")
+    all_values = sens_data(generator, ini_config["power_up"], ini_config["power_down"])
     print(all_values)
 except pyvisa.errors.VisaIOError as e:
+    print(e)
     print("Ошибка связанная с портом, pyvisa или чем то подобным")
 
