@@ -1,5 +1,6 @@
 import pyvisa
 from configparser import ConfigParser
+import time
 
 rm = pyvisa.ResourceManager() # '@py' необходим для принудительного использования бэкенда не NI-VISA, а pyvisa-py
 print(rm.list_resources('TCPIP?*')) #'?*' это фильтр необходимый для обнаружения нашего адреса устройства, так как бех него будут искаться только приборы, чьи имена заканчиваются на ::INSTR, а наше заканчивется на ::SOCKET
@@ -170,21 +171,40 @@ def setting_scan_type(instrument, powers_grid: list, num_of_point: int, ini_conf
     set_segment(instrument, ini_conf["frequency"], 1000)
     set_segment(instrument, ini_conf["frequency"], zone["bandwidth"])
 
+def compute_correction(etalon_i, measured_i, etalon_0, measured_0): #Формула correction из старой программы: corr_i = (etalon_i - measured_i) - (etalon_0 - measured_0)
+    return (etalon_i - measured_i) - (etalon_0 - measured_0)
+
+def correction(num_in_grid_of_power: int, list_of_values: list): #Считаем коэффициенты для коррекции
+    if num_in_grid_of_power == 0:
+        etalon_0 = list_of_values[0]
+        measured_0 = list_of_values[1]
+        correction = 0.0
+    else:
+        correction = compute_correction(
+            etalon_i=list_of_values[0][num_in_grid_of_power],
+            measured_i=list_of_values[1][num_in_grid_of_power],
+            etalon_0=list_of_values[0][0],
+            measured_0=list_of_values[1][0],
+        )
+    return correction
+
 #выбор того кому передаём source1:power зависит от того кто является R
 dev_gen_val = [[], []]
-def sens_data(instrument, power_up: float, power_down: float):#Эта функция нужна для того что бы пройтись по всем мощностям и записать значения
+def sens_data(instrument, power_up: float, power_down: float):#Эта функция нужна для того что бы пройтись по всем мощностям и записать значения корректировки в массив
     power_grid = grid_of_powers(power_up, power_down, points_of_power=125)
     print(power_grid)
+    correction_list = [[], []]
     for n in range(len(power_grid)):
         setting_scan_type(instrument, power_grid, n, ini_config)
         dev_val = taking_fdat(device)
         gen_val = taking_fdat(generator)
-        dev_gen_val[0].append(reduce_fdat(dev_val))
-        dev_gen_val[1].append(reduce_fdat(gen_val))
-    return dev_gen_val
-
-def compute_correction(etalon_i, measured_i, etalon_0, measured_0): #Формула correction из старой программы: corr_i = (etalon_i - measured_i) - (etalon_0 - measured_0)
-    return (etalon_i - measured_i) - (etalon_0 - measured_0)
+        dev_gen_val[1].append(reduce_fdat(dev_val))
+        dev_gen_val[0].append(reduce_fdat(gen_val))
+        correction_list[1].append(correction(n, dev_gen_val)) #Считаем коэффициенты для коррекции
+        correction_list[0].append(power_grid[n]) #Добавляем в конечный список мощности, так же как это было в изначальной программе  power0, corr0, power1, corr1,...
+        correction_list[1] = db_to_linear(correction_list[1])#Перед записью в прибор старая программа переводит dB в линейный вид
+        correction_list[0] = db_to_linear(correction_list[0])
+    return correction_list
 
 def db_to_linear(db_value: float): #Перед записью в прибор старая программа переводит dB в линейный вид
     return 10 ** (db_value / 20.0)
