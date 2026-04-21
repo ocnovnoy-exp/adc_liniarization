@@ -144,6 +144,12 @@ def taking_fdat(instrument):#Эта функция берет список по�
     values = [float(i.strip()) for i in instrument.query("CALC:DATA:FDAT?").split(",")]
     return values
 
+def reduce_fdat(val):
+    average_weignt = 0
+    for i in range(0, len(val), 2):
+        average_weignt += val[i]
+    return average_weignt / (len(val) / 2)
+
 def setting_scan_type(instrument, powers_grid: list, num_of_point: int, ini_conf: dict):#Функция необходимая для задания мощности и отправки SENS:SEGM:DATA 2 раза, с bandwidth = 1000 и той что мы берем их .ini файла
     power = powers_grid[num_of_point]
     zone = zone_for_point(num_of_point, ini_conf)
@@ -152,16 +158,67 @@ def setting_scan_type(instrument, powers_grid: list, num_of_point: int, ini_conf
     set_segment(instrument, ini_conf["frequency"], zone["bandwidth"])
 
 #выбор того кому передаём source1:power зависит от того кто является R
+dev_gen_val = [[], []]
 def sens_data(instrument, power_up, power_down):#Эта функция нужна для того что бы пройтись по всем мощностям и записать значения
     power_grid = grid_of_powers(power_up, power_down, points_of_power=125)
     for n in range(len(power_grid)):
         setting_scan_type(instrument, power_grid, n, ini_config)
         dev_val = taking_fdat(device)
         gen_val = taking_fdat(generator)
-        dev_gen_val = [[], []]
-        dev_gen_val[0].append(dev_val)
-        dev_gen_val[1].append(gen_val)
+        dev_gen_val[0].append(reduce_fdat(dev_val))
+        dev_gen_val[1].append(reduce_fdat(gen_val))
     return dev_gen_val
+
+def compute_correction(etalon_i, measured_i, etalon_0, measured_0): #Формула correction из старой программы: corr_i = (etalon_i - measured_i) - (etalon_0 - measured_0)
+    return (etalon_i - measured_i) - (etalon_0 - measured_0)
+
+
+def db_to_linear(db_value: float): #Перед записью в прибор старая программа переводит dB в линейный вид
+    return 10 ** (db_value / 20.0)
+
+
+def build_correction_array(power_db_list, correction_db_list): #Формирует конечный массив для записи в прибор(перед записью, power и correction переводятся из dB в linear)
+    if len(power_db_list) != len(correction_db_list):
+        raise ValueError("power_db_list и correction_db_list должны быть одинаковой длины")
+    result = []
+    for power_db, corr_db in zip(power_db_list, correction_db_list):
+        result.append(db_to_linear(power_db))
+        result.append(db_to_linear(corr_db))
+
+    return result
+
+
+def format_array_for_scpi_old_style(values): #Форматирует массив как старая программа.
+    return ",".join(f"{float(value):.6E}" for value in values)
+
+
+def receiver_number_from_trace(trace_name: str):    #Возвращает номер приёмника для команды SERV:RECn:LIN:DATA.
+    kind = trace_name[0].upper()
+    number = int(trace_name[1:])
+    if kind == "T":
+        return 1 + (number - 1) * 2
+    if kind == "R":
+        return 2 + (number - 1) * 2
+    raise ValueError(f"Неизвестная трасса: {trace_name}")
+
+
+def send_correction_array(device, trace_name: str, correction_array, dry_run: bool = True): #Отправляет массив коррекции в SN9000
+    receiver_number = receiver_number_from_trace(trace_name)
+    payload = format_array_for_scpi_old_style(correction_array)
+    command = f"SERV:REC{receiver_number}:LIN:DATA {payload}"
+    print("\nПодготовка отправки массива коррекции")
+    print("Trace:", trace_name)
+    print("Receiver number:", receiver_number)
+    print("Количество чисел:", len(correction_array))
+    print("Длина команды:", len(command))
+    print("Первые 200 символов команды:")
+    print(command[:200])
+    if dry_run:
+        print("DRY RUN: команда не отправлена в прибор.")
+        return
+    device.write(command)
+    #time.sleep(4.0)# Старый код ждал 4 секунды после записи.
+    syst_err(device, "after write correction array")
 
 list_port = [[1, 1], [1, 1]] #Нужно добавить функцию для чтения ini файлов, из них в этот массив должны складываться какие R и T мы хотим посмотреть 
 def switching_port(list_port):#Функция swithing_port нужна для переключения T и R котроые мы измеряем, то есть мы идем для device T1, R1, T2, R2 и тд, а для generator R2, T2, R2, T2 и тд
