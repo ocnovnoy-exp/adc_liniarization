@@ -176,8 +176,6 @@ def compute_correction(etalon_i, measured_i, etalon_0, measured_0): #Форму�
 
 def correction(num_in_grid_of_power: int, list_of_values: list): #Считаем коэффициенты для коррекции
     if num_in_grid_of_power == 0:
-        etalon_0 = list_of_values[0]
-        measured_0 = list_of_values[1]
         correction = 0.0
     else:
         correction = compute_correction(
@@ -202,8 +200,8 @@ def sens_data(instrument, power_up: float, power_down: float):#Эта функц
         dev_gen_val[0].append(reduce_fdat(gen_val))
         correction_list[1].append(correction(n, dev_gen_val)) #Считаем коэффициенты для коррекции
         correction_list[0].append(power_grid[n]) #Добавляем в конечный список мощности, так же как это было в изначальной программе  power0, corr0, power1, corr1,...
-        correction_list[1] = db_to_linear(correction_list[1])#Перед записью в прибор старая программа переводит dB в линейный вид
-        correction_list[0] = db_to_linear(correction_list[0])
+        correction_list[1][n] = db_to_linear(correction_list[1][n])#Перед записью в прибор старая программа переводит dB в линейный вид
+        correction_list[0][n] = db_to_linear(correction_list[0][n])
     return correction_list
 
 def db_to_linear(db_value: float): #Перед записью в прибор старая программа переводит dB в линейный вид
