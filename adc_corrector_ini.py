@@ -156,7 +156,7 @@ def taking_fdat(instrument):#Эта функция берет список по�
     print(instrument, values[0])
     return values
 
-def reduce_fdat(val):
+def reduce_fdat(val: list):
     average_weignt = 0
     for i in range(0, len(val), 2):
         average_weignt += val[i]
@@ -172,7 +172,7 @@ def setting_scan_type(instrument, powers_grid: list, num_of_point: int, ini_conf
 
 #выбор того кому передаём source1:power зависит от того кто является R
 dev_gen_val = [[], []]
-def sens_data(instrument, power_up, power_down):#Эта функция нужна для того что бы пройтись по всем мощностям и записать значения
+def sens_data(instrument, power_up: float, power_down: float):#Эта функция нужна для того что бы пройтись по всем мощностям и записать значения
     power_grid = grid_of_powers(power_up, power_down, points_of_power=125)
     print(power_grid)
     for n in range(len(power_grid)):
