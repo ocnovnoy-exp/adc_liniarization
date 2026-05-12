@@ -58,7 +58,7 @@ def load_ini(path: str):#Нужно добавить снятие данных �
         ],
     }
 
-def initialization():#Функиция для инициализации приборов
+def get_info():#Получение информации от приборов, имя, версию и тд.
     dev_idn, gen_idn = [], []
     dev_idn = device.query("*IDN?").split(", ")
     print(dev_idn)
@@ -246,7 +246,7 @@ def send_correction_array(device, trace_name: str, correction_array, dry_run: bo
     #syst_err(device)#, "after write correction array"
 
 list_port = [[1, 1], [1, 1]] #Нужно добавить функцию для чтения ini файлов, из них в этот массив должны складываться какие R и T мы хотим посмотреть 
-def switching_port(list_port):#Функция swithing_port нужна для переключения T и R котроые мы измеряем, то есть мы идем для device T1, R1, T2, R2 и тд, а для generator R2, T2, R2, T2 и тд
+def initialization_and_switching_port(list_port):#Функция initialization_and_swithing_port нужна для выбора следующего порта и переключения T и R котроые мы измеряем, то есть мы идем для device T1, R1, T2, R2 и тд, а для generator R2, T2, R2, T2 и тд
     for i in range(len(list_port)):
         if list_port[i][0] == 1 or list_port[i][1] == 1:
             input(f"Подключите 2 порт {generator_idn[1]} с {i + 1} портом {device_idn[1]}, а после введите любой символ")
@@ -264,7 +264,7 @@ try:
     # device_or_generator_func('TCPIP0::localhost::5025::SOCKET')
     device = open_scpi_resource('TCPIP0::localhost::5026::SOCKET')#device_generator_adreses[1]
     generator = open_scpi_resource('TCPIP0::localhost::5025::SOCKET')#device_generator_adreses[0]
-    device_idn, generator_idn = initialization() 
+    device_idn, generator_idn = get_info() 
     ini_config = load_ini(r"C:\adc-corrector-develop\adc-corrector-develop\System\SN9000-10_2.ini")
     device_setup()
     switching_t_r("T1")
