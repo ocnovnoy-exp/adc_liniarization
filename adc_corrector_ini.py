@@ -56,6 +56,7 @@ def load_ini(path: str):#Нужно добавить снятие данных �
                 "avg": cfg.getint("AverageSettingsSection3", "AverageCount"),
             },
         ],
+        "receivers" : [{reciver_tuple[0]: reciver_tuple[1]} for reciver_tuple in cfg.items("ReceiverSettings")]
     }
 
 def get_info():#Получение информации от приборов, имя, версию и тд.
