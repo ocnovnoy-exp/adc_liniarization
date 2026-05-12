@@ -26,7 +26,7 @@ def device_or_generator_func(adres):#Эта функция нам нужна т�
     instrument.close()
     return 
 
-def load_ini(path: str):#Нужно добавить снятие данных о том какие T и R нужно смотреть
+def load_ini(path: str):
     cfg = ConfigParser()
     cfg.optionxform = str
     cfg.read(path, encoding="utf-8")
@@ -101,20 +101,27 @@ def device_switching_setup():
     device.write("serv:rec:lin:state 0")# Если запускать программу в режиме проверки, то тут будет не 0, а 1
     device.query("serv:rec:lin:state?")
 
-def switching_t_r(port):# Мы передаём сюда порт устройства которого мы проверяем, device_port
+def switching_on_t(port):# Мы передаём сюда порт устройства которого мы проверяем, device_port
     generator_switching_setup()
     device.write("syst:pres")
     device.write(f"calc:par1:def {port}")
     generator.write("trigger:source BUS")
     generator.write("init:cont 1")
     generator.write("trigger:wait WAIT")
-    if port[0] == "R":
-        device.write("calc:par1:spor 1")
-        generator.write("calc:par1:def T2")
-        generator.write("outp:state 0")
-    elif port[0] == "T":
-        device.write("calc:par1:spor 2")
-        generator.write("outp:state 1")
+    device.write("calc:par1:spor 2")
+    generator.write("outp:state 1")
+    device_switching_setup()
+
+def switching_on_r(port):# Мы передаём сюда порт устройства которого мы проверяем, device_port
+    generator_switching_setup()
+    device.write("syst:pres")
+    device.write(f"calc:par1:def {port}")
+    generator.write("trigger:source BUS")
+    generator.write("init:cont 1")
+    generator.write("trigger:wait WAIT")
+    device.write("calc:par1:spor 1")
+    generator.write("calc:par1:def T2")
+    generator.write("outp:state 0")
     device_switching_setup()
 
 def wait_opc(instrument):
