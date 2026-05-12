@@ -71,7 +71,7 @@ def get_info():#Получение информации от приборов, �
     return dev_idn, gen_idn
 
 list_of_segment_data = [5,0,1,0,0,0,2,936000000,936000000,2,1000,936000000,936000000,2,10000]
-def device_setup():
+def device_setup():# Функция в которой мы задаём сегменты для измерения
     device.write("syst:pres")
     device.write("trigger:source BUS")
     device.write("init:cont 1")
@@ -84,25 +84,12 @@ def device_setup():
 generator_port = "R2"
 device_port = "T1"
 
-def switching_t_r(port):
+def generator_switching_setup():
     generator.write("syst:pres")
     generator.write("calc:par1:def R2")#В логах мы сначала передаем obzor что он R2, а затем что он T2, можно ли обойтись только тем что говорим, что он T2?
     generator.write("calc:par1:spor 2")# !!!!! надо разобарться что с этой командой, где 1, а где 2 ставится
-    device.write("syst:pres")
-    device.write(f"calc:par1:def {port}")
-    if port[0] == "R":
-        device.write("calc:par1:spor 1")
-        generator.write("trigger:source BUS")
-        generator.write("init:cont 1")
-        generator.write("trigger:wait WAIT")
-        generator.write("calc:par1:def T2")
-        generator.write("outp:state 0")
-    elif port[0] == "T":
-        device.write("calc:par1:spor 2")
-        generator.write("trigger:source BUS")
-        generator.write("init:cont 1")
-        generator.write("trigger:wait WAIT")
-        generator.write("outp:state 1")
+
+def device_switching_setup():
     device.write("sens:rosc:sour EXT")
     device.write("outp:state 1")
     device.write("trigger:source BUS")
@@ -112,6 +99,22 @@ def switching_t_r(port):
     device.query("serv:rec:corr:state?")
     device.write("serv:rec:lin:state 0")# Если запускать программу в режиме проверки, то тут будет не 0, а 1
     device.query("serv:rec:lin:state?")
+
+def switching_t_r(port):# Мы передаём сюда порт устройства которого мы проверяем, device_port
+    generator_switching_setup()
+    device.write("syst:pres")
+    device.write(f"calc:par1:def {port}")
+    generator.write("trigger:source BUS")
+    generator.write("init:cont 1")
+    generator.write("trigger:wait WAIT")
+    if port[0] == "R":
+        device.write("calc:par1:spor 1")
+        generator.write("calc:par1:def T2")
+        generator.write("outp:state 0")
+    elif port[0] == "T":
+        device.write("calc:par1:spor 2")
+        generator.write("outp:state 1")
+    device_switching_setup()
 
 def wait_opc(instrument):
     answer_on_opc = instrument.query("*OPC?").strip()
