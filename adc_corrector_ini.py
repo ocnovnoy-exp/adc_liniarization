@@ -1,6 +1,8 @@
 import pyvisa
 from configparser import ConfigParser
 import time
+import matplotlib.pyplot as plt
+
 
 rm = pyvisa.ResourceManager() # '@py' необходим для принудительного использования бэкенда не NI-VISA, а pyvisa-py
 print(rm.list_resources('TCPIP?*')) #'?*' это фильтр необходимый для обнаружения нашего адреса устройства, так как бех него будут искаться только приборы, чьи имена заканчиваются на ::INSTR, а наше заканчивется на ::SOCKET
@@ -101,7 +103,7 @@ def device_switching_setup():
     device.write("serv:rec:lin:state 0")# Если запускать программу в режиме проверки, то тут будет не 0, а 1
     device.query("serv:rec:lin:state?")
 
-def switching_on_t(port):# Мы передаём сюда порт устройства которого мы проверяем, device_port
+def switching_on_t(port):# Мы передаём сюда порт(когда меняем с R на T) устройства которого мы проверяем, device_port
     generator_switching_setup()
     device.write("syst:pres")
     device.write(f"calc:par1:def {port}")
@@ -112,7 +114,7 @@ def switching_on_t(port):# Мы передаём сюда порт устрой�
     generator.write("outp:state 1")
     device_switching_setup()
 
-def switching_on_r(port):# Мы передаём сюда порт устройства которого мы проверяем, device_port
+def switching_on_r(port):# Мы передаём сюда порт(когда меняем с T на R) устройства которого мы проверяем, device_port
     generator_switching_setup()
     device.write("syst:pres")
     device.write(f"calc:par1:def {port}")
@@ -197,10 +199,14 @@ def correction(num_in_grid_of_power: int, list_of_values: list): #Считаем
         )
     return correction
 
+def vizualization_of_numbers(x, y): # Функция для визуализации массива данных котороые мы получаем
+    plt.scatter(x, y)
+    plt.show()
+
 #выбор того кому передаём source1:power зависит от того кто является R
 dev_gen_val = [[], []]
-def sens_data(instrument, power_up: float, power_down: float):#Эта функция нужна для того что бы пройтись по всем мощностям и записать значения корректировки в массив
-    power_grid = grid_of_powers(power_up, power_down, points_of_power=125)
+def sens_data(instrument):#Эта функция нужна для того что бы пройтись по всем мощностям и записать значения корректировки в массив
+    power_grid = grid_of_powers(ini_config["power_up"], ini_config["power_down"], points_of_power=125)
     print(power_grid)
     correction_list = [[], []]
     for n in range(len(power_grid)):
@@ -213,6 +219,9 @@ def sens_data(instrument, power_up: float, power_down: float):#Эта функц
         correction_list[0].append(power_grid[n]) #Добавляем в конечный список мощности, так же как это было в изначальной программе  power0, corr0, power1, corr1,...
         correction_list[1][n] = db_to_linear(correction_list[1][n])#Перед записью в прибор старая программа переводит dB в линейный вид
         correction_list[0][n] = db_to_linear(correction_list[0][n])
+    vizualization_of_numbers(correction_list[1], correction_list[0])
+    vizualization_of_numbers(power_grid, dev_gen_val[1])
+    vizualization_of_numbers(power_grid, dev_gen_val[0])
     return correction_list
 
 def db_to_linear(db_value: float): #Перед записью в прибор старая программа переводит dB в линейный вид
@@ -264,10 +273,10 @@ def initialization_and_switching_port(list_port):#Функция initialization_
         for j in range(len(list_port[i])):
             if list_port[i][j] == 1 and j == 0:
                 device_port = f"T{i + 1}"
-                switching_t_r(device_port)
+                switching_on_t(device_port)
             elif list_port[i][j] == 1 and j == 1:
                 device_port = f"R{i + 1}"   
-                switching_t_r(device_port)
+                switching_on_r(device_port)
     return device_port
 
 try:
@@ -278,7 +287,7 @@ try:
     device_idn, generator_idn = get_info() 
     ini_config = load_ini(r"C:\adc-corrector-develop\adc-corrector-develop\System\SN9000-10_2.ini")
     device_setup()
-    switching_t_r("T1")
+    switching_on_t("T1")
     all_values = sens_data(generator, ini_config["power_up"], ini_config["power_down"])
     print(all_values)
 except pyvisa.errors.VisaIOError as e:
