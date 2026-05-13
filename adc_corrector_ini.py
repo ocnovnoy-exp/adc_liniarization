@@ -199,8 +199,10 @@ def correction(num_in_grid_of_power: int, list_of_values: list): #Считаем
         )
     return correction
 
-def vizualization_of_numbers(x, y): # Функция для визуализации массива данных котороые мы получаем
+def vizualization_of_numbers(x: list, y: list, x_label: str, y_label: str): # Функция для визуализации массива данных котороые мы получаем
     plt.scatter(x, y)
+    plt.xlabel(x_label) # Подпись оси X
+    plt.ylabel(y_label)
     plt.show()
 
 #выбор того кому передаём source1:power зависит от того кто является R
@@ -219,9 +221,9 @@ def sens_data(instrument):#Эта функция нужна для того чт
         correction_list[0].append(power_grid[n]) #Добавляем в конечный список мощности, так же как это было в изначальной программе  power0, corr0, power1, corr1,...
         correction_list[1][n] = db_to_linear(correction_list[1][n])#Перед записью в прибор старая программа переводит dB в линейный вид
         correction_list[0][n] = db_to_linear(correction_list[0][n])
-    vizualization_of_numbers(correction_list[1], correction_list[0])
-    vizualization_of_numbers(power_grid, dev_gen_val[1])
-    vizualization_of_numbers(power_grid, dev_gen_val[0])
+    vizualization_of_numbers(correction_list[0], correction_list[1], "Сетка мощностей", "Коэфициенты корреляции")
+    vizualization_of_numbers(power_grid, dev_gen_val[1], "Сетка мощностей", "Значения fdat c SN9000")
+    vizualization_of_numbers(power_grid, dev_gen_val[0], "Сетка мощностей", "Значения fdat c Obzor804")
     return correction_list
 
 def db_to_linear(db_value: float): #Перед записью в прибор старая программа переводит dB в линейный вид
@@ -288,7 +290,7 @@ try:
     ini_config = load_ini(r"C:\adc-corrector-develop\adc-corrector-develop\System\SN9000-10_2.ini")
     device_setup()
     switching_on_t("T1")
-    all_values = sens_data(generator, ini_config["power_up"], ini_config["power_down"])
+    all_values = sens_data(generator)
     print(all_values)
 except pyvisa.errors.VisaIOError as e:
     print(e)
