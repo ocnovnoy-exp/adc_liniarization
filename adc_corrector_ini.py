@@ -76,17 +76,26 @@ def get_info():#Получение информации от приборов, �
     device.write("init:cont 1")
     device.write("trigger:wait WAIT")
     device.write("sens:rosc:sour EXT")
+    generator.query("syst:err?")
     return dev_idn, gen_idn
 
-list_of_segment_data = [5,0,1,0,0,0,2,936000000,936000000,2,1000,936000000,936000000,2,10000]
+def prepare_for_work():
+    device.write("SENS:SWE:TYPE SEGM")
+    device.write("SENS:SEGM:DATA 5,0,1,0,0,0,2,936000000,936000000,2,1000,936000000,936000000,2,10000")
+    device.write("trig:sing")
+    device.query("*OPC?")
+
+list_of_segment_data = [5,0,1,0,0,0,2,936000000,936000000,2,100,936000000,936000000,2,100]
 def device_setup():# Функция в которой мы задаём сегменты для измерения
+    device.write("sens1:aver:stat 0")
     device.write("SENS:SWE:TYPE SEGM")
     device.write(f"SENS:SEGM:DATA {",".join(str(num) for num in list_of_segment_data)}")
+    generator.write("sens1:aver:stat 0")
+    generator.write("SENS:SWE:TYPE SEGM")
+    generator.write("SENS:SEGM:DATA 5,0,1,0,0,0,2,936000000,936000000,2,100,936000000,936000000,2,100")
+    device.query("syst:err?")
     device.write("trig:sing")
-    wait_opc(device)
-
-generator_port = "R2"
-device_port = "T1"
+    generator.query("syst:err?")
 
 def generator_switching_setup():
     generator.write("syst:pres")
@@ -168,7 +177,7 @@ def taking_fdat(instrument):#Эта функция берет список по�
 #    syst_err(instrument)
     instrument.write("calc:parameter1:select")
     values = [float(i.strip()) for i in instrument.query("CALC:DATA:FDAT?").split(",")]
-    print(instrument, values[0])
+    print(instrument, values)
     return values
 
 def reduce_fdat(val: list):
@@ -214,7 +223,10 @@ def sens_data(instrument):#Эта функция нужна для того чт
     correction_list = [[], []]
     for n in range(len(power_grid)):
         setting_scan_type(instrument, power_grid, n, ini_config)
+        wait_opc(device)
+        device.query("syst:err?")
         dev_val = taking_fdat(device)
+        generator.query("syst:err?")
         gen_val = taking_fdat(generator)
         dev_gen_val[1].append(reduce_fdat(dev_val))
         dev_gen_val[0].append(reduce_fdat(gen_val))
@@ -289,6 +301,8 @@ try:
     generator = open_scpi_resource('TCPIP0::localhost::5025::SOCKET')#device_generator_adreses[0]
     device_idn, generator_idn = get_info() 
     ini_config = load_ini(r"C:\adc-corrector-develop\adc-corrector-develop\System\SN9000-10_2.ini")
+    get_info()
+    prepare_for_work()
     switching_on_t("T1")
     device_setup()
     all_values = sens_data(generator)
