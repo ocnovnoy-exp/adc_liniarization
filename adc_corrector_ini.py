@@ -71,18 +71,19 @@ def get_info():#Получение информации от приборов, �
     gen_idn = generator.query("*IDN?").split(", ")
     print(gen_idn)
     print(generator.query("syst:err?"))
-    return dev_idn, gen_idn
-
-list_of_segment_data = [5,0,1,0,0,0,2,936000000,936000000,2,1000,936000000,936000000,2,10000]
-def device_setup():# Функция в которой мы задаём сегменты для измерения
     device.write("syst:pres")
     device.write("trigger:source BUS")
     device.write("init:cont 1")
     device.write("trigger:wait WAIT")
     device.write("sens:rosc:sour EXT")
+    return dev_idn, gen_idn
+
+list_of_segment_data = [5,0,1,0,0,0,2,936000000,936000000,2,1000,936000000,936000000,2,10000]
+def device_setup():# Функция в которой мы задаём сегменты для измерения
     device.write("SENS:SWE:TYPE SEGM")
     device.write(f"SENS:SEGM:DATA {",".join(str(num) for num in list_of_segment_data)}")
     device.write("trig:sing")
+    wait_opc(device)
 
 generator_port = "R2"
 device_port = "T1"
@@ -107,10 +108,10 @@ def switching_on_t(port):# Мы передаём сюда порт(когда м
     generator_switching_setup()
     device.write("syst:pres")
     device.write(f"calc:par1:def {port}")
+    device.write("calc:par1:spor 2")
     generator.write("trigger:source BUS")
     generator.write("init:cont 1")
     generator.write("trigger:wait WAIT")
-    device.write("calc:par1:spor 2")
     generator.write("outp:state 1")
     device_switching_setup()
 
@@ -288,8 +289,8 @@ try:
     generator = open_scpi_resource('TCPIP0::localhost::5025::SOCKET')#device_generator_adreses[0]
     device_idn, generator_idn = get_info() 
     ini_config = load_ini(r"C:\adc-corrector-develop\adc-corrector-develop\System\SN9000-10_2.ini")
-    device_setup()
     switching_on_t("T1")
+    device_setup()
     all_values = sens_data(generator)
     print(all_values)
 except pyvisa.errors.VisaIOError as e:
