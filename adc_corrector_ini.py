@@ -244,9 +244,9 @@ def sens_data(port):#Эта функция нужна для того что б�
         correction_list[0].append(power_grid[n]) #Добавляем в конечный список мощности, так же как это было в изначальной программе  power0, corr0, power1, corr1,...
         correction_list[1][n] = db_to_linear(correction_list[1][n])#Перед записью в прибор старая программа переводит dB в линейный вид
         correction_list[0][n] = db_to_linear(correction_list[0][n])
-    vizualization_of_numbers(correction_list[0], correction_list[1], "Сетка мощностей", "Коэфициенты корреляции")
-    vizualization_of_numbers(power_grid, dev_gen_val[1], "Сетка мощностей", "Значения fdat c SN9000")
-    vizualization_of_numbers(power_grid, dev_gen_val[0], "Сетка мощностей", "Значения fdat c Obzor804")
+        vizualization_of_numbers(correction_list[0], correction_list[1], "Сетка мощностей", "Коэфициенты корреляции")
+        vizualization_of_numbers(power_grid, dev_gen_val[1], "Сетка мощностей", "Значения fdat c SN9000")
+        vizualization_of_numbers(power_grid, dev_gen_val[0], "Сетка мощностей", "Значения fdat c Obzor804")
     return correction_list
 
 def db_to_linear(db_value: float): #Перед записью в прибор старая программа переводит dB в линейный вид
@@ -290,19 +290,21 @@ def send_correction_array(device, trace_name: str, correction_array, dry_run: bo
     #time.sleep(4.0)# Старый код ждал 4 секунды после записи.
     #syst_err(device)#, "after write correction array"
 
-list_port = [[1, 1], [1, 1]] #Нужно добавить функцию для чтения ini файлов, из них в этот массив должны складываться какие R и T мы хотим посмотреть 
-def initialization_and_switching_port(list_port):#Функция initialization_and_swithing_port нужна для выбора следующего порта и переключения T и R котроые мы измеряем, то есть мы идем для device T1, R1, T2, R2 и тд, а для generator R2, T2, R2, T2 и тд
-    for i in range(len(list_port)):
-        if list_port[i][0] == 1 or list_port[i][1] == 1:
-            input(f"Подключите 2 порт {generator_idn[1]} с {i + 1} портом {device_idn[1]}, а после введите любой символ")
-        for j in range(len(list_port[i])):
-            if list_port[i][j] == 1 and j == 0:
-                device_port = f"T{i + 1}"
-                switching_on_t(device_port)
-            elif list_port[i][j] == 1 and j == 1:
-                device_port = f"R{i + 1}"   
-                switching_on_r(device_port)
-    return device_port
+def main_cycle_changing_r_t():# Цикл для изменения порта R и T, эти порты мы берем из .ini файла
+    for i in list(ini_config["receivers"]):
+        if ini_config["receivers"][i] == 1:
+            port = i
+            print(f"Подключте пожалуйста порт {port[1:]}")
+        else:
+            continue
+        if port[0] == "T":
+            switching_on_t(port)
+        elif port[0] == "R":
+            switching_on_r(port)
+        device_setup()
+        correction_values = sens_data(port)
+        # Надо дописать запись коррекционных значений
+        
 
 try:
     # device_or_generator_func('TCPIP0::localhost::5026::SOCKET')
