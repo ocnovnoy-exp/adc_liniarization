@@ -82,7 +82,7 @@ def get_info():#Получение информации от приборов, �
 def prepare_for_work():
     device.write("SENS:SWE:TYPE SEGM")
     device.write("SENS:SEGM:DATA 5,0,1,0,0,0,2,936000000,936000000,2,1000,936000000,936000000,2,10000")
-    device.write("trig:sing")
+    trigger_single(device)
     device.query("*OPC?")
 
 list_of_segment_data = [5,0,1,0,0,0,2,936000000,936000000,2,100,936000000,936000000,2,100]
@@ -94,7 +94,7 @@ def device_setup():# Функция в которой мы задаём сегм
     generator.write("SENS:SWE:TYPE SEGM")
     generator.write("SENS:SEGM:DATA 5,0,1,0,0,0,2,936000000,936000000,2,100,936000000,936000000,2,100")
     device.query("syst:err?")
-    device.write("trig:sing")
+    trigger_single(device)
     generator.query("syst:err?")
 
 def generator_switching_setup():
@@ -141,6 +141,8 @@ def wait_opc(instrument):
     if answer_on_opc != "1":
         raise RuntimeError(f"Неожиданный ответ на *OPC?, а именно: {answer_on_opc}")
 
+def trigger_single(instrument):
+    instrument.write("trig:sing")
 # def syst_err(instrument):
 #     answer_on_opc = instrument.query("syst:err?").strip()
 #     if answer_on_opc != '0,"No error"':
@@ -170,11 +172,12 @@ def set_segment(instrument, frequency_hz: float, ifbw: int):
         f"{frequency_hz:.0f},{frequency_hz:.0f},2,{ifbw},"
         f"{frequency_hz:.0f},{frequency_hz:.0f},2,{ifbw}"
     )
-    instrument.write("trig:sing")
+    trigger_single(instrument)
     wait_opc(instrument)
 
 def taking_fdat(instrument):#Эта функция берет список после CALC:DATA:FDAT?
-#    syst_err(instrument)
+#syst_err(instrument)
+    trigger_single(instrument)
     instrument.write("calc:parameter1:select")
     values = [float(i.strip()) for i in instrument.query("CALC:DATA:FDAT?").split(",")]
     print(instrument, values)
