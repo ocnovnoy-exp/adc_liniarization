@@ -28,7 +28,7 @@ def device_or_generator_func(adres):#Эта функция нам нужна т�
     instrument.close()
     return 
 
-def load_ini(path: str):
+def load_ini(path: str):# Загружаем значения для корректировки из .ini файла
     cfg = ConfigParser()
     cfg.optionxform = str
     cfg.read(path, encoding="utf-8")
@@ -172,14 +172,14 @@ def set_segment(instrument, frequency_hz: float, ifbw: int):
         f"{frequency_hz:.0f},{frequency_hz:.0f},2,{ifbw},"
         f"{frequency_hz:.0f},{frequency_hz:.0f},2,{ifbw}"
     )
-    trigger_single(instrument)
-    wait_opc(instrument)
 
 def taking_fdat(instrument):#Эта функция берет список после CALC:DATA:FDAT?
 #syst_err(instrument)
+    instrument.query("syst:err?")
     trigger_single(instrument)
     instrument.write("calc:parameter1:select")
-    values = [float(i.strip()) for i in instrument.query("CALC:DATA:FDAT?").split(",")]
+    raw_values = instrument.query("CALC:DATA:FDAT?").split(",")
+    values = [float(i.strip()) for i in raw_values]
     print(instrument, values)
     return values
 
@@ -195,7 +195,10 @@ def setting_scan_type(instrument, powers_grid: list, num_of_point: int, ini_conf
     print(f"SOURce1:POWer {power:.6e}       {zone['bandwidth']}      {num_of_point}")
     instrument.write(f"SOURce1:POWer {power:.6e}")
     set_segment(instrument, ini_conf["frequency"], 1000)
+    trigger_single(instrument)
+    wait_opc(instrument)
     set_segment(instrument, ini_conf["frequency"], zone["bandwidth"])
+    trigger_single(instrument)
 
 def compute_correction(etalon_i, measured_i, etalon_0, measured_0): #Формула correction из старой программы: corr_i = (etalon_i - measured_i) - (etalon_0 - measured_0)
     return (etalon_i - measured_i) - (etalon_0 - measured_0)
@@ -219,18 +222,22 @@ def vizualization_of_numbers(x: list, y: list, x_label: str, y_label: str): # Ф
     plt.show()
 
 #выбор того кому передаём source1:power зависит от того кто является R
-dev_gen_val = [[], []]
-def sens_data(instrument):#Эта функция нужна для того что бы пройтись по всем мощностям и записать значения корректировки в массив
+def sens_data(port):#Эта функция нужна для того что бы пройтись по всем мощностям и записать значения корректировки в массив
+    dev_gen_val = [[], []]
     power_grid = grid_of_powers(ini_config["power_up"], ini_config["power_down"], points_of_power=125)
     print(power_grid)
     correction_list = [[], []]
     for n in range(len(power_grid)):
-        setting_scan_type(instrument, power_grid, n, ini_config)
-        wait_opc(device)
-        device.query("syst:err?")
-        dev_val = taking_fdat(device)
-        generator.query("syst:err?")
-        gen_val = taking_fdat(generator)
+        if port[0] == "T":
+            setting_scan_type(generator, power_grid, n, ini_config)
+            wait_opc(device)
+            dev_val = taking_fdat(device)
+            gen_val = taking_fdat(generator)
+        elif port[0] == "R":
+            setting_scan_type(device, power_grid, n, ini_config)
+            wait_opc(generator)
+            gen_val = taking_fdat(generator)
+            dev_val = taking_fdat(device)
         dev_gen_val[1].append(reduce_fdat(dev_val))
         dev_gen_val[0].append(reduce_fdat(gen_val))
         correction_list[1].append(correction(n, dev_gen_val)) #Считаем коэффициенты для коррекции
@@ -308,7 +315,7 @@ try:
     prepare_for_work()
     switching_on_t("T1")
     device_setup()
-    all_values = sens_data(generator)
+    all_values = sens_data("T1")
     print(all_values)
 except pyvisa.errors.VisaIOError as e:
     print(e)
