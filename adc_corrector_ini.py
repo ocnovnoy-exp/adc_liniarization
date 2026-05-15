@@ -18,6 +18,21 @@ def open_scpi_resource(address: str):
     inst.read_termination = "\n" # Ждать \n в конце ответа
     return inst
 
+def check_adress(adres: str):# Функиця которую следует использоавть вместо rm.list_resources('TCPIP?*'), потому что она выдаёт неправильные порты
+    try:
+        instrument = open_scpi_resource(adres)
+        name = instrument.query("*IDN?").strip()
+        print(f"{adres} --> {name}")
+        instrument.close()
+    except Exception as e:
+        print(f"{adres} FAIL --> {e}")
+    finally:
+        if instrument is not None:
+            try:
+                instrument.close()
+            except Exception:
+                pass
+
 def device_or_generator_func(adres):#Эта функция нам нужна только для того что бы определить что за устройство мы подключили, generator или device
     instrument = rm.open_resource(adres)
     if instrument.query("*IDN?").split(", ")[1] in list_of_adc:#Тут мы разделяем строку которую нам возвращает *IDN?, и смотрим что это за устройство, есть лиона в списке list_of_adc
@@ -81,7 +96,7 @@ def get_info():#Получение информации от приборов, �
 
 def prepare_for_work():
     device.write("SENS:SWE:TYPE SEGM")
-    device.write("SENS:SEGM:DATA 5,0,1,0,0,0,2,936000000,936000000,1,1000")
+    device.write("SENS:SEGM:DATA 5,0,1,0,0,0,1,936000000,936000000,1,1000")
     trigger_single(device)
     device.query("*OPC?")
 
@@ -92,7 +107,7 @@ def device_setup():# Функция в которой мы задаём сегм
     device.write(f"SENS:SEGM:DATA {",".join(str(num) for num in list_of_segment_data)}")
     generator.write("sens1:aver:stat 0")
     generator.write("SENS:SWE:TYPE SEGM")
-    generator.write("SENS:SEGM:DATA 5,0,1,0,0,0,2,936000000,936000000,1")
+    generator.write("SENS:SEGM:DATA 5,0,1,0,0,0,1,936000000,936000000,1,100")
     device.query("syst:err?")
     trigger_single(device)
     generator.query("syst:err?")
@@ -148,8 +163,6 @@ def trigger_single(instrument):
 #     if answer_on_opc != '0,"No error"':
 #         raise RuntimeError(f"Неожиданный ответ от syst:err?: {answer_on_opc}")
 
-power_down = -45.000000
-power_up = 10.000000 #Эти 2 значения тоже должны браться из ini файла
 def grid_of_powers(power_up: float, power_down: float, points_of_power: int = 125):#Изменение мощности происходит просто определением дельты, и уже после этого мы идем от наибольшей мозности отнимая значение дельты умноженной на номер шага 
     delta_power = (power_up - power_down) / (points_of_power - 1)
     return [power_up - delta_power * i for i in range(points_of_power)]
@@ -168,7 +181,7 @@ def set_segment(instrument, frequency_hz: float, ifbw: int):
     instrument.write("SENS:SWE:TYPE SEGM")
     instrument.write(
         "SENS:SEGM:DATA "
-        f"5,0,1,0,0,0,2,"
+        f"5,0,1,0,0,0,1,"
         f"{frequency_hz:.0f},{frequency_hz:.0f},1,{ifbw}"
     )
 
