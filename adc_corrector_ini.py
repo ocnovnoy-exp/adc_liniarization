@@ -81,18 +81,18 @@ def get_info():#Получение информации от приборов, �
 
 def prepare_for_work():
     device.write("SENS:SWE:TYPE SEGM")
-    device.write("SENS:SEGM:DATA 5,0,1,0,0,0,2,936000000,936000000,2,1000,936000000,936000000,2,10000")
+    device.write("SENS:SEGM:DATA 5,0,1,0,0,0,2,936000000,936000000,1,1000")
     trigger_single(device)
     device.query("*OPC?")
 
-list_of_segment_data = [5,0,1,0,0,0,2,936000000,936000000,2,100,936000000,936000000,2,100]
+list_of_segment_data = [5,0,1,0,0,0,2,936000000,936000000,1,100]
 def device_setup():# Функция в которой мы задаём сегменты для измерения
     device.write("sens1:aver:stat 0")
     device.write("SENS:SWE:TYPE SEGM")
     device.write(f"SENS:SEGM:DATA {",".join(str(num) for num in list_of_segment_data)}")
     generator.write("sens1:aver:stat 0")
     generator.write("SENS:SWE:TYPE SEGM")
-    generator.write("SENS:SEGM:DATA 5,0,1,0,0,0,2,936000000,936000000,2,100,936000000,936000000,2,100")
+    generator.write("SENS:SEGM:DATA 5,0,1,0,0,0,2,936000000,936000000,1")
     device.query("syst:err?")
     trigger_single(device)
     generator.query("syst:err?")
@@ -169,8 +169,7 @@ def set_segment(instrument, frequency_hz: float, ifbw: int):
     instrument.write(
         "SENS:SEGM:DATA "
         f"5,0,1,0,0,0,2,"
-        f"{frequency_hz:.0f},{frequency_hz:.0f},2,{ifbw},"
-        f"{frequency_hz:.0f},{frequency_hz:.0f},2,{ifbw}"
+        f"{frequency_hz:.0f},{frequency_hz:.0f},1,{ifbw}"
     )
 
 def taking_fdat(instrument):#Эта функция берет список после CALC:DATA:FDAT?
