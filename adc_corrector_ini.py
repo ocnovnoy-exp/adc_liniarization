@@ -184,6 +184,8 @@ def set_segment(instrument, frequency_hz: float, ifbw: int):
         f"5,0,1,0,0,0,1,"
         f"{frequency_hz:.0f},{frequency_hz:.0f},1,{ifbw}"
     )
+    trigger_single(instrument)
+    wait_opc(instrument)
 
 def taking_fdat(instrument):#Эта функция берет список после CALC:DATA:FDAT?
 #syst_err(instrument)
@@ -207,10 +209,7 @@ def setting_scan_type(instrument, powers_grid: list, num_of_point: int, ini_conf
     print(f"SOURce1:POWer {power:.6e}       {zone['bandwidth']}      {num_of_point}")
     instrument.write(f"SOURce1:POWer {power:.6e}")
     set_segment(instrument, ini_conf["frequency"], 1000)
-    trigger_single(instrument)
-    wait_opc(instrument)
     set_segment(instrument, ini_conf["frequency"], zone["bandwidth"])
-    trigger_single(instrument)
 
 def compute_correction(etalon_i, measured_i, etalon_0, measured_0): #Формула correction из старой программы: corr_i = (etalon_i - measured_i) - (etalon_0 - measured_0)
     return (etalon_i - measured_i) - (etalon_0 - measured_0)
@@ -235,9 +234,9 @@ def vizualization_of_numbers(x: list, y: list, x_label: str, y_label: str): # Ф
 
 #выбор того кому передаём source1:power зависит от того кто является R
 def sens_data(port):#Эта функция нужна для того что бы пройтись по всем мощностям и записать значения корректировки в массив
-    dev_gen_val = [[], []]
     power_grid = grid_of_powers(ini_config["power_up"], ini_config["power_down"], points_of_power=125)
     print(power_grid)
+    dev_gen_val = [[], []]
     correction_list = [[], []]
     for n in range(len(power_grid)):
         if port[0] == "T":
@@ -250,15 +249,16 @@ def sens_data(port):#Эта функция нужна для того что б�
             wait_opc(generator)
             gen_val = taking_fdat(generator)
             dev_val = taking_fdat(device)
+        
         dev_gen_val[1].append(reduce_fdat(dev_val))
         dev_gen_val[0].append(reduce_fdat(gen_val))
         correction_list[1].append(correction(n, dev_gen_val)) #Считаем коэффициенты для коррекции
         correction_list[0].append(power_grid[n]) #Добавляем в конечный список мощности, так же как это было в изначальной программе  power0, corr0, power1, corr1,...
         correction_list[1][n] = db_to_linear(correction_list[1][n])#Перед записью в прибор старая программа переводит dB в линейный вид
         correction_list[0][n] = db_to_linear(correction_list[0][n])
-        vizualization_of_numbers(correction_list[0], correction_list[1], "Сетка мощностей", "Коэфициенты корреляции")
-        vizualization_of_numbers(power_grid, dev_gen_val[1], "Сетка мощностей", "Значения fdat c SN9000")
-        vizualization_of_numbers(power_grid, dev_gen_val[0], "Сетка мощностей", "Значения fdat c Obzor804")
+    vizualization_of_numbers(correction_list[0], correction_list[1], "Сетка мощностей", "Коэфициенты корреляции")
+    vizualization_of_numbers(power_grid, dev_gen_val[1], "Сетка мощностей", "Значения fdat c SN9000")
+    vizualization_of_numbers(power_grid, dev_gen_val[0], "Сетка мощностей", "Значения fdat c Obzor804")
     return correction_list
 
 def db_to_linear(db_value: float): #Перед записью в прибор старая программа переводит dB в линейный вид
