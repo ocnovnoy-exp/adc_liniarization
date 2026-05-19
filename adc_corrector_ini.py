@@ -18,6 +18,21 @@ def open_scpi_resource(address: str):
     inst.read_termination = "\n" # Ждать \n в конце ответа
     return inst
 
+def check_adress(adres: str):# Функиця которую следует использоавть вместо rm.list_resources('TCPIP?*'), потому что она выдаёт неправильные порты
+    try:
+        instrument = open_scpi_resource(adres)
+        name = instrument.query("*IDN?").strip()
+        print(f"{adres} --> {name}")
+        instrument.close()
+    except Exception as e:
+        print(f"{adres} FAIL --> {e}")
+    finally:
+        if instrument is not None:
+            try:
+                instrument.close()
+            except Exception:
+                pass
+
 def device_or_generator_func(adres):#Эта функция нам нужна только для того что бы определить что за устройство мы подключили, generator или device
     instrument = rm.open_resource(adres)
     if instrument.query("*IDN?").split(", ")[1] in list_of_adc:#Тут мы разделяем строку которую нам возвращает *IDN?, и смотрим что это за устройство, есть лиона в списке list_of_adc
@@ -81,7 +96,7 @@ def get_info():#Получение информации от приборов, �
 
 def prepare_for_work():
     device.write("SENS:SWE:TYPE SEGM")
-    device.write("SENS:SEGM:DATA 5,0,1,0,0,0,2,936000000,936000000,2,1000,936000000,936000000,2,10000")
+    device.write("SENS:SEGM:DATA 5,0,1,0,0,0,2,936000000,936000000,2,1000,936000000,936000000,2,1000")
     trigger_single(device)
     device.query("*OPC?")
 
@@ -148,8 +163,6 @@ def trigger_single(instrument):
 #     if answer_on_opc != '0,"No error"':
 #         raise RuntimeError(f"Неожиданный ответ от syst:err?: {answer_on_opc}")
 
-power_down = -45.000000
-power_up = 10.000000 #Эти 2 значения тоже должны браться из ini файла
 def grid_of_powers(power_up: float, power_down: float, points_of_power: int = 125):#Изменение мощности происходит просто определением дельты, и уже после этого мы идем от наибольшей мозности отнимая значение дельты умноженной на номер шага 
     delta_power = (power_up - power_down) / (points_of_power - 1)
     return [power_up - delta_power * i for i in range(points_of_power)]
@@ -202,15 +215,15 @@ def setting_scan_type(instrument, powers_grid: list, num_of_point: int, ini_conf
 def compute_correction(etalon_i, measured_i, etalon_0, measured_0): #Формула correction из старой программы: corr_i = (etalon_i - measured_i) - (etalon_0 - measured_0)
     return (etalon_i - measured_i) - (etalon_0 - measured_0)
 
-def correction(num_in_grid_of_power: int, list_of_values: list): #Считаем коэффициенты для коррекции
+def correction(num_in_grid_of_power: int, etalon_list: list, mesured_list: list): #Считаем коэффициенты для коррекции
     if num_in_grid_of_power == 0:
         correction = 0.0
     else:
         correction = compute_correction(
-            etalon_i=list_of_values[0][num_in_grid_of_power],
-            measured_i=list_of_values[1][num_in_grid_of_power],
-            etalon_0=list_of_values[0][0],
-            measured_0=list_of_values[1][0],
+            etalon_i = etalon_list[num_in_grid_of_power],
+            measured_i = mesured_list[num_in_grid_of_power],
+            etalon_0 = etalon_list[0],
+            measured_0 = mesured_list[0],
         )
     return correction
 
@@ -222,10 +235,11 @@ def vizualization_of_numbers(x: list, y: list, x_label: str, y_label: str): # Ф
 
 #выбор того кому передаём source1:power зависит от того кто является R
 def sens_data(port):#Эта функция нужна для того что бы пройтись по всем мощностям и записать значения корректировки в массив
-    dev_gen_val = [[], []]
     power_grid = grid_of_powers(ini_config["power_up"], ini_config["power_down"], points_of_power=125)
     print(power_grid)
-    correction_list = [[], []]
+    measured_val = []
+    etalon_val = []
+    correction_coef_list = []
     for n in range(len(power_grid)):
         if port[0] == "T":
             setting_scan_type(generator, power_grid, n, ini_config)
@@ -237,26 +251,28 @@ def sens_data(port):#Эта функция нужна для того что б�
             wait_opc(generator)
             gen_val = taking_fdat(generator)
             dev_val = taking_fdat(device)
-        dev_gen_val[1].append(reduce_fdat(dev_val))
-        dev_gen_val[0].append(reduce_fdat(gen_val))
-        correction_list[1].append(correction(n, dev_gen_val)) #Считаем коэффициенты для коррекции
-        correction_list[0].append(power_grid[n]) #Добавляем в конечный список мощности, так же как это было в изначальной программе  power0, corr0, power1, corr1,...
-        correction_list[1][n] = db_to_linear(correction_list[1][n])#Перед записью в прибор старая программа переводит dB в линейный вид
-        correction_list[0][n] = db_to_linear(correction_list[0][n])
-    vizualization_of_numbers(correction_list[0], correction_list[1], "Сетка мощностей", "Коэфициенты корреляции")
-    vizualization_of_numbers(power_grid, dev_gen_val[1], "Сетка мощностей", "Значения fdat c SN9000")
-    vizualization_of_numbers(power_grid, dev_gen_val[0], "Сетка мощностей", "Значения fdat c Obzor804")
-    return correction_list
+        
+        measured_val.append(reduce_fdat(dev_val))
+        etalon_val.append(reduce_fdat(gen_val))
+        correction_coef_list.append(correction(n, etalon_val, measured_val)) #Считаем коэффициенты для коррекции
+        correction_array = build_correction_array(
+            measured_val,
+            correction_coef_list
+        )
+    vizualization_of_numbers(power_grid, correction_coef_list, "Сетка мощностей", "Коэфициенты корреляции")
+    vizualization_of_numbers(power_grid, measured_val, "Сетка мощностей", "Значения fdat c SN9000")
+    vizualization_of_numbers(power_grid, etalon_val, "Сетка мощностей", "Значения fdat c Obzor804")
+    return correction_array
 
 def db_to_linear(db_value: float): #Перед записью в прибор старая программа переводит dB в линейный вид
     return 10 ** (db_value / 20.0)
 
-def build_correction_array(power_db_list, correction_db_list): #Формирует конечный массив для записи в прибор(перед записью, power и correction переводятся из dB в linear)
-    if len(power_db_list) != len(correction_db_list):
-        raise ValueError("power_db_list и correction_db_list должны быть одинаковой длины")
+def build_correction_array(mesured_db_list, correction_db_list): #Формирует конечный массив для записи в прибор(перед записью, measured и correction переводятся из dB в linear)
+    if len(mesured_db_list) != len(correction_db_list):
+        raise ValueError("mesured_db_list и correction_db_list должны быть одинаковой длины")
     result = []
-    for power_db, corr_db in zip(power_db_list, correction_db_list):
-        result.append(db_to_linear(power_db))
+    for meas_db, corr_db in zip(mesured_db_list, correction_db_list):
+        result.append(db_to_linear(meas_db))
         result.append(db_to_linear(corr_db))
     return result
 
