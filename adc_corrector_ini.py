@@ -236,7 +236,7 @@ def vizualization_all_pictures(data_of_pictures: list, num_cols: int):#На вх
     if len(data_of_pictures) % num_cols != 0:  
         num_rows = len(data_of_pictures) // num_cols + 1
     else:
-        num_rows = len(data_of_pictures) / num_cols
+        num_rows = len(data_of_pictures) // num_cols
     fig, axs = plt.subplots(num_rows, num_cols, figsize=(10 * num_cols, 4 * num_rows))
     for i in range(len(axs)):
         for j in range(len(axs[i])):
@@ -279,11 +279,11 @@ def sens_data(port):#Эта функция нужна для того что б�
             measured_val,
             correction_coef_list
         )
-    data_for_vizualization = [
+    data_for_vizualization = [# В этот список мы записываем то что хотим визуализировать, ось x, ось y, подпись к оси x и подпись к оси y
     (power_grid, correction_coef_list, "Сетка мощностей", "Коэфициенты корреляции"),
     (power_grid, measured_val, "Сетка мощностей", "Значения fdat c SN9000"),
     (power_grid, etalon_val, "Сетка мощностей", "Значения fdat c Obzor804"),
-    (correction_array[0], correction_array[1], "Измеренные значения", "Коррекционный коэфициент")
+    (correction_array[0::2], correction_array[1::2], "Измеренные значения", "Коррекционный коэфициент"),
     ]
     vizualization_all_pictures(data_for_vizualization, num_cols = 2)
     return correction_array
