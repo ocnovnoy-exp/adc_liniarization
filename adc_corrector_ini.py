@@ -227,10 +227,30 @@ def correction(num_in_grid_of_power: int, etalon_list: list, mesured_list: list)
         )
     return correction
 
-def vizualization_of_numbers(x: list, y: list, x_label: str, y_label: str): # Функция для визуализации массива данных котороые мы получаем
-    plt.scatter(x, y)
-    plt.xlabel(x_label) # Подпись оси X
-    plt.ylabel(y_label)
+# Функция для визуализации данных
+def vizualization_all_pictures(data_of_pictures: list, num_cols: int):#На вход подаём массив из кортежей с настройками каждого графика, который мы хотим вывести, а так же кол-во столбцов
+    if len(data_of_pictures) == 0:
+        print("Массив с характеристиками пустой, внутри нет ничего для описания графиков")
+        return
+
+    if len(data_of_pictures) % num_cols != 0:  
+        num_rows = len(data_of_pictures) // num_cols + 1
+    else:
+        num_rows = len(data_of_pictures) / num_cols
+    fig, axs = plt.subplots(num_rows, num_cols, figsize=(10 * num_cols, 4 * num_rows))
+    for i in range(len(axs)):
+        for j in range(len(axs[i])):
+            current_num_of_picture = i * num_cols + j
+            if current_num_of_picture < len(data_of_pictures):
+                x, y, x_label, y_label = data_of_pictures[i * num_cols + j]
+                ax = axs[i][j]
+                ax.plot(x, y, color="blue")
+                ax.set_xlabel(x_label)
+                ax.set_ylabel(y_label)
+                ax.grid(True)
+            else:
+                fig.delaxes(axs[i][j])
+    plt.tight_layout()  
     plt.show()
 
 #выбор того кому передаём source1:power зависит от того кто является R
@@ -259,9 +279,13 @@ def sens_data(port):#Эта функция нужна для того что б�
             measured_val,
             correction_coef_list
         )
-    vizualization_of_numbers(power_grid, correction_coef_list, "Сетка мощностей", "Коэфициенты корреляции")
-    vizualization_of_numbers(power_grid, measured_val, "Сетка мощностей", "Значения fdat c SN9000")
-    vizualization_of_numbers(power_grid, etalon_val, "Сетка мощностей", "Значения fdat c Obzor804")
+    data_for_vizualization = [
+    (power_grid, correction_coef_list, "Сетка мощностей", "Коэфициенты корреляции"),
+    (power_grid, measured_val, "Сетка мощностей", "Значения fdat c SN9000"),
+    (power_grid, etalon_val, "Сетка мощностей", "Значения fdat c Obzor804"),
+    (correction_array[0], correction_array[1], "Измеренные значения", "Коррекционный коэфициент")
+    ]
+    vizualization_all_pictures(data_for_vizualization, num_cols = 2)
     return correction_array
 
 def db_to_linear(db_value: float): #Перед записью в прибор старая программа переводит dB в линейный вид
