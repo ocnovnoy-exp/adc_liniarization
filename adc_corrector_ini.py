@@ -291,7 +291,7 @@ def sens_data(port):#Эта функция нужна для того что б�
 def db_to_linear(db_value: float): #Перед записью в прибор старая программа переводит dB в линейный вид
     return 10 ** (db_value / 20.0)
 
-def build_correction_array(mesured_db_list, correction_db_list): #Формирует конечный массив для записи в прибор(перед записью, measured и correction переводятся из dB в linear)
+def build_correction_array(mesured_db_list, correction_db_list): #Формирует конечный массив для записи в прибор(перед записью, measured и correction переводятся из dB в linear), а так же значения этих 2 массивов чередуются
     if len(mesured_db_list) != len(correction_db_list):
         raise ValueError("mesured_db_list и correction_db_list должны быть одинаковой длины")
     result = []
@@ -317,16 +317,14 @@ def receiver_number_from_trace(trace_name: str):    #Возвращает ном
 def send_correction_array(device, trace_name: str, correction_array, dry_run: bool = True): #Отправляет массив коррекции в SN9000
     receiver_number = receiver_number_from_trace(trace_name)
     payload = format_array_for_scpi_old_style(correction_array)
-    command = f"SERV:REC{receiver_number}:LIN:DATA {payload}"
-    print("\nПодготовка отправки массива коррекции")
     print("Trace:", trace_name)
     print("Receiver number:", receiver_number)
     print("Количество чисел:", len(correction_array))
     if dry_run:
         print("DRY RUN: команда не отправлена в прибор.")
         return
-    device.write(command)
-    #time.sleep(4.0)# Старый код ждал 4 секунды после записи.
+    device.write(f"SERV:REC{receiver_number}:LIN:DATA {payload}")
+    time.sleep(4.0)# Старый код ждал 4 секунды после записи.
     #syst_err(device)#, "after write correction array"
 
 def main_cycle_changing_r_t():# Цикл для изменения порта R и T, эти порты мы берем из .ini файла
@@ -342,6 +340,8 @@ def main_cycle_changing_r_t():# Цикл для изменения порта R 
             switching_on_r(port)
         device_setup()
         correction_values = sens_data(port)
+        print(correction_values)
+        send_correction_array(device, port, correction_values, False)
         # Надо дописать запись коррекционных значений
         
 
@@ -354,10 +354,7 @@ try:
     ini_config = load_ini(r"C:\adc-corrector-develop\adc-corrector-develop\System\SN9000-10_2.ini")
     get_info()
     prepare_for_work()
-    switching_on_t("T1")
-    device_setup()
-    all_values = sens_data("T1")
-    print(all_values)
+    main_cycle_changing_r_t()
 except pyvisa.errors.VisaIOError as e:
     print(e)
     print("Ошибка связанная с портом, pyvisa или чем то подобным")
