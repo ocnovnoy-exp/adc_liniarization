@@ -185,18 +185,19 @@ def set_segment(instrument, frequency_hz: float, ifbw: int):
         f"{frequency_hz:.0f},{frequency_hz:.0f},2,{ifbw},"
         f"{frequency_hz:.0f},{frequency_hz:.0f},2,{ifbw}"
     )
-    trigger_single(instrument)
-    wait_opc(instrument)
 
 def taking_fdat(instrument):#Эта функция берет список после CALC:DATA:FDAT?
-#syst_err(instrument)
-    instrument.query("syst:err?")
-    trigger_single(instrument)
     instrument.write("calc:parameter1:select")
     raw_values = instrument.query("CALC:DATA:FDAT?").split(",")
     values = [float(i.strip()) for i in raw_values]
     print(instrument, values)
     return values
+
+def trigger_for_both_inst(inst1, inst2):# Функиця для единичного измерения обоих устройств
+    trigger_single(inst1)
+    trigger_single(inst2)
+    wait_opc(inst1)
+    wait_opc(inst2)
 
 def reduce_fdat(val: list):
     average_weignt = 0
@@ -210,6 +211,8 @@ def setting_scan_type(instrument, powers_grid: list, num_of_point: int, ini_conf
     print(f"SOURce1:POWer {power:.6e}       {zone['bandwidth']}      {num_of_point}")
     instrument.write(f"SOURce1:POWer {power:.6e}")
     set_segment(instrument, ini_conf["frequency"], 1000)
+    trigger_single(instrument)
+    wait_opc(instrument)
     set_segment(instrument, ini_conf["frequency"], zone["bandwidth"])
 
 def compute_correction(etalon_i, measured_i, etalon_0, measured_0): #Формула correction из старой программы: corr_i = (etalon_i - measured_i) - (etalon_0 - measured_0)
@@ -230,7 +233,7 @@ def correction(num_in_grid_of_power: int, etalon_list: list, mesured_list: list)
 # Функция для визуализации данных
 def vizualization_all_pictures(data_of_pictures: list, num_cols: int):#На вход подаём массив из кортежей с настройками каждого графика, который мы хотим вывести, а так же кол-во столбцов
     if len(data_of_pictures) == 0:
-        print("Массив с характеристиками пустой, внутри нет ничего для описания графиков")
+        print("Массив с характеристиками пуст, внутри нет ничего для описания графиков")
         return
 
     if len(data_of_pictures) % num_cols != 0:  
@@ -256,22 +259,29 @@ def vizualization_all_pictures(data_of_pictures: list, num_cols: int):#На вх
 #выбор того кому передаём source1:power зависит от того кто является R
 def sens_data(port):#Эта функция нужна для того что бы пройтись по всем мощностям и записать значения корректировки в массив
     power_grid = grid_of_powers(ini_config["power_up"], ini_config["power_down"], points_of_power=125)
-    print(power_grid)
+
     measured_val = []
     etalon_val = []
     correction_coef_list = []
+
+    if port[0] == "T":
+        active_source = generator
+        passive_device = device
+    elif port[0] == "R":
+        active_source = device
+        passive_device = generator
+    else:
+        raise ValueError(f"Неизвестный порт: {port}")
+
     for n in range(len(power_grid)):
-        if port[0] == "T":
-            setting_scan_type(generator, power_grid, n, ini_config)
-            wait_opc(device)
-            dev_val = taking_fdat(device)
-            gen_val = taking_fdat(generator)
-        elif port[0] == "R":
-            setting_scan_type(device, power_grid, n, ini_config)
-            wait_opc(generator)
-            gen_val = taking_fdat(generator)
-            dev_val = taking_fdat(device)
-        
+        setting_scan_type(active_source, power_grid, n, ini_config)
+        trigger_single(active_source)
+        trigger_single(passive_device)
+        wait_opc(active_source)
+        wait_opc(passive_device)
+        gen_val = taking_fdat(generator)#, "generator"
+        dev_val = taking_fdat(device)#, "device"
+
         measured_val.append(reduce_fdat(dev_val))
         etalon_val.append(reduce_fdat(gen_val))
         correction_coef_list.append(correction(n, etalon_val, measured_val)) #Считаем коэффициенты для коррекции
@@ -320,6 +330,7 @@ def send_correction_array(device, trace_name: str, correction_array, dry_run: bo
     print("Trace:", trace_name)
     print("Receiver number:", receiver_number)
     print("Количество чисел:", len(correction_array))
+    print(payload)
     if dry_run:
         print("DRY RUN: команда не отправлена в прибор.")
         return
@@ -331,7 +342,7 @@ def main_cycle_changing_r_t():# Цикл для изменения порта R 
     for i in list(ini_config["receivers"]):
         if ini_config["receivers"][i] == 1:
             port = i
-            print(f"Подключте пожалуйста порт {port[1:]}")
+            input(f"Подключте пожалуйста порт {port[1:]} и после введите что то в консоль")
         else:
             continue
         if port[0] == "T":
@@ -340,9 +351,7 @@ def main_cycle_changing_r_t():# Цикл для изменения порта R 
             switching_on_r(port)
         device_setup()
         correction_values = sens_data(port)
-        print(correction_values)
         send_correction_array(device, port, correction_values, False)
-        # Надо дописать запись коррекционных значений
         
 
 try:
@@ -352,7 +361,6 @@ try:
     generator = open_scpi_resource('TCPIP0::localhost::5025::SOCKET')#device_generator_adreses[0]
     device_idn, generator_idn = get_info() 
     ini_config = load_ini(r"C:\adc-corrector-develop\adc-corrector-develop\System\SN9000-10_2.ini")
-    get_info()
     prepare_for_work()
     main_cycle_changing_r_t()
 except pyvisa.errors.VisaIOError as e:
