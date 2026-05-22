@@ -132,7 +132,10 @@ def switching_on_t(port):# Мы передаём сюда порт(когда м
     generator_switching_setup()
     device.write("syst:pres")
     device.write(f"calc:par1:def {port}")
-    device.write("calc:par1:spor 2")
+
+    device_spor = 2 if int(port[1:]) == 1 else 1# Вот такие настройки у пчелки, надо попробовать с device_spor = 2 if int(port[1:]) == 1 else 1, при чем попробовать для 4 портов
+    device.write(f"calc:par1:spor {device_spor}")
+
     generator.write("trigger:source BUS")
     generator.write("init:cont 1")
     generator.write("trigger:wait WAIT")
@@ -146,7 +149,7 @@ def switching_on_r(port):# Мы передаём сюда порт(когда м
     generator.write("trigger:source BUS")
     generator.write("init:cont 1")
     generator.write("trigger:wait WAIT")
-    device.write("calc:par1:spor 1")
+    device.write(f"calc:par1:spor {port[1:]}")
     generator.write("calc:par1:def T2")
     generator.write("outp:state 0")
     device_switching_setup()
@@ -240,7 +243,7 @@ def vizualization_all_pictures(data_of_pictures: list, num_cols: int):#На вх
         num_rows = len(data_of_pictures) // num_cols + 1
     else:
         num_rows = len(data_of_pictures) // num_cols
-    fig, axs = plt.subplots(num_rows, num_cols, figsize=(10 * num_cols, 4 * num_rows))
+    fig, axs = plt.subplots(num_rows, num_cols, figsize=(5 * num_cols, 4 * num_rows))
     for i in range(len(axs)):
         for j in range(len(axs[i])):
             current_num_of_picture = i * num_cols + j
