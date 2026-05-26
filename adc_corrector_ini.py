@@ -201,6 +201,7 @@ def reduce_fdat(val: list):
         average_weignt += val[i]
     return average_weignt / (len(val) / 2)
 
+
 def setting_scan_type(instrument, powers_grid: list, num_of_point: int, ini_conf: dict):#Функция необходимая для задания мощности и отправки SENS:SEGM:DATA 2 раза, с bandwidth = 1000 и той что мы берем их .ini файла
     power = powers_grid[num_of_point]
     bandwidth = get_bandwidth_for_zone(num_of_point, ini_conf)
@@ -226,29 +227,37 @@ def correction(num_in_grid_of_power: int, etalon_list: list, mesured_list: list)
         )
     return correction
 
+def graphic_solo(x, y, x_label, y_label, ax):# Функция для вывода графика с одной функцией
+  ax.plot(x, y, color="blue")
+  ax.set_xlabel(x_label)
+  ax.set_ylabel(y_label)
+  ax.grid(True)
+
+def graphic_duo(x, y, y1, x_label, legend1, legend2, ax):# Функция для вывода графика с двумя функциями
+  ax.plot(x, y, color="blue")
+  ax.plot(x, y1, color="red")
+  ax.set_xlabel(x_label)
+  ax.set_xlabel(x_label)
+  ax.grid(True)
+  ax.legend([legend1, legend2])
+
 # Функция для визуализации данных
 def vizualization_all_pictures(data_of_pictures: list, num_cols: int):#На вход подаём массив из кортежей с настройками каждого графика, который мы хотим вывести, а так же кол-во столбцов
     if len(data_of_pictures) == 0:
         print("Массив с характеристиками пуст, внутри нет ничего для описания графиков")
         return
-
-    if len(data_of_pictures) % num_cols != 0:  
-        num_rows = len(data_of_pictures) // num_cols + 1
-    else:
-        num_rows = len(data_of_pictures) // num_cols
+    num_rows = 1
     fig, axs = plt.subplots(num_rows, num_cols, figsize=(5 * num_cols, 4 * num_rows))
     for i in range(len(axs)):
-        for j in range(len(axs[i])):
-            current_num_of_picture = i * num_cols + j
-            if current_num_of_picture < len(data_of_pictures):
-                x, y, x_label, y_label = data_of_pictures[i * num_cols + j]
-                ax = axs[i][j]
-                ax.plot(x, y, color="blue")
-                ax.set_xlabel(x_label)
-                ax.set_ylabel(y_label)
-                ax.grid(True)
-            else:
-                fig.delaxes(axs[i][j])
+        current_num_of_picture = i
+        if len(data_of_pictures[i]) == 4 and current_num_of_picture < len(data_of_pictures):
+            x, y, x_label, y_label = data_of_pictures[i]
+            graphic_solo(x, y, x_label, y_label, axs[i])
+        elif len(data_of_pictures[i]) == 6 and current_num_of_picture < len(data_of_pictures):
+            x, y, y1, x_label, legend1, legend2 = data_of_pictures[i]
+            graphic_duo(x, y, y1, x_label, legend1, legend2, axs[i])
+        else:
+            fig.delaxes(axs[i])
     plt.tight_layout()  
     plt.show()
 
@@ -287,11 +296,10 @@ def sens_data(port):#Эта функция нужна для того что б�
         )
     data_for_vizualization = [# В этот список мы записываем то что хотим визуализировать, ось x, ось y, подпись к оси x и подпись к оси y
     (power_grid, correction_coef_list, "Сетка мощностей", "Коэфициенты корреляции"),
-    (power_grid, measured_val, "Сетка мощностей", "Значения fdat c SN9000"),
-    (power_grid, etalon_val, "Сетка мощностей", "Значения fdat c Obzor804"),
+    (power_grid, measured_val, etalon_val,"Сетка мощностей", "fdat c SN9000", "fdat c Obzor804"),
     (correction_array[0::2], correction_array[1::2], "Измеренные значения", "Коррекционный коэфициент"),
     ]
-    vizualization_all_pictures(data_for_vizualization, num_cols = 2)
+    vizualization_all_pictures(data_for_vizualization, num_cols = 3)
     return correction_array
 
 def db_to_linear(db_value: float): #Перед записью в прибор старая программа переводит dB в линейный вид
