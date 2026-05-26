@@ -94,22 +94,15 @@ def get_info():#Получение информации от приборов, �
     generator.query("syst:err?")
     return dev_idn, gen_idn
 
-def prepare_for_work():
-    device.write("SENS:SWE:TYPE SEGM")
-    device.write("SENS:SEGM:DATA 5,0,1,0,0,0,2,936000000,936000000,2,1000,936000000,936000000,2,1000")
-    trigger_single(device)
-    device.query("*OPC?")
-
 list_of_segment_data = [5,0,1,0,0,0,2,936000000,936000000,2,100,936000000,936000000,2,100]
 def device_setup():# Функция в которой мы задаём сегменты для измерения
     device.write("sens1:aver:stat 0")
     device.write("SENS:SWE:TYPE SEGM")
-    device.write(f"SENS:SEGM:DATA {",".join(str(num) for num in list_of_segment_data)}")
+    set_segment(device, ini_config["frequency"], ini_config["zones"][0]["bandwidth"])
     generator.write("sens1:aver:stat 0")
     generator.write("SENS:SWE:TYPE SEGM")
-    generator.write("SENS:SEGM:DATA 5,0,1,0,0,0,2,936000000,936000000,2,100,936000000,936000000,2,100")
+    set_segment(generator, ini_config["frequency"], ini_config["zones"][0]["bandwidth"])
     device.query("syst:err?")
-    trigger_single(device)
     generator.query("syst:err?")
 
 def generator_switching_setup():
@@ -170,13 +163,13 @@ def grid_of_powers(power_up: float, power_down: float, points_of_power: int = 12
     delta_power = (power_up - power_down) / (points_of_power - 1)
     return [power_up - delta_power * i for i in range(points_of_power)]
 
-def zone_for_point(num_of_point: int, ini_conf: dict):#Функця определяет какое bandwidth для этой точки(в каком из 3 сегментов находится точка)
+def get_bandwidth_for_zone(num_of_point: int, ini_conf: dict):#Функця определяет какое bandwidth для этой точки(в каком из 3 сегментов находится точка)
     for zones_conf in ini_conf.get("zones"):#функция возвращает настройки для сегмента в котором находится точка
         if zones_conf.get("begin") <= num_of_point <= zones_conf.get("end"):
-            if num_of_point == zones_conf.get("begin"):
-                device.write("sens1:aver:stat 0")
-                generator.write("sens1:aver:stat 0")
-            return zones_conf
+            # if num_of_point == zones_conf.get("begin"):
+            #     device.write("sens1:aver:stat 0")
+            #     generator.write("sens1:aver:stat 0")
+            return zones_conf.get("bandwidth")
     raise ValueError(f"Не найдена зона для точки {num_of_point}")
 
 #SENS:SEGM:DATA 100,10 или 3 зависит от ini файла, там 3 сегмента и для каждого своё значение
@@ -210,13 +203,13 @@ def reduce_fdat(val: list):
 
 def setting_scan_type(instrument, powers_grid: list, num_of_point: int, ini_conf: dict):#Функция необходимая для задания мощности и отправки SENS:SEGM:DATA 2 раза, с bandwidth = 1000 и той что мы берем их .ini файла
     power = powers_grid[num_of_point]
-    zone = zone_for_point(num_of_point, ini_conf)
-    print(f"SOURce1:POWer {power:.6e}       {zone['bandwidth']}      {num_of_point}")
+    bandwidth = get_bandwidth_for_zone(num_of_point, ini_conf)
+    print(f"SOURce1:POWer {power:.6e}       {bandwidth}      {num_of_point}")
     instrument.write(f"SOURce1:POWer {power:.6e}")
     set_segment(instrument, ini_conf["frequency"], 1000)
     trigger_single(instrument)
     wait_opc(instrument)
-    set_segment(instrument, ini_conf["frequency"], zone["bandwidth"])
+    set_segment(instrument, ini_conf["frequency"], bandwidth)
 
 def compute_correction(etalon_i, measured_i, etalon_0, measured_0): #Формула correction из старой программы: corr_i = (etalon_i - measured_i) - (etalon_0 - measured_0)
     return (etalon_i - measured_i) - (etalon_0 - measured_0)
@@ -333,7 +326,7 @@ def send_correction_array(device, trace_name: str, correction_array, dry_run: bo
     print("Trace:", trace_name)
     print("Receiver number:", receiver_number)
     print("Количество чисел:", len(correction_array))
-    print(payload)
+    print(f"SERV:REC{receiver_number}:LIN:DATA {payload}")
     if dry_run:
         print("DRY RUN: команда не отправлена в прибор.")
         return
@@ -364,7 +357,7 @@ try:
     generator = open_scpi_resource('TCPIP0::localhost::5025::SOCKET')#device_generator_adreses[0]
     device_idn, generator_idn = get_info() 
     ini_config = load_ini(r"C:\adc-corrector-develop\adc-corrector-develop\System\SN9000-10_2.ini")
-    prepare_for_work()
+    # prepare_for_work()
     main_cycle_changing_r_t()
 except pyvisa.errors.VisaIOError as e:
     print(e)
