@@ -227,6 +227,47 @@ def correction(num_in_grid_of_power: int, etalon_list: list, mesured_list: list)
         )
     return correction
 
+# def gaussian_smooth(values: list[float], radius: int = 2, sigma: float | None = None) -> list[float]:
+#     """
+#     Сглаживает массив Гауссовым фильтром.
+
+#     radius=2 означает, что для каждой точки используются:
+#     две точки слева, текущая точка и две точки справа.
+
+#     Чем больше radius, тем сильнее сглаживание.
+#     """
+
+#     if radius <= 0 or len(values) < 3:
+#         return values[:]
+
+#     if sigma is None:
+#         sigma = radius / 2 if radius > 1 else 1.0
+
+#     kernel = []
+#     for x in range(-radius, radius + 1):
+#         kernel.append(math.exp(-(x * x) / (2 * sigma * sigma)))
+
+#     s = sum(kernel)
+#     kernel = [k / s for k in kernel]
+
+#     result = []
+
+#     for i in range(len(values)):
+#         acc = 0.0
+#         weight_sum = 0.0
+
+#         for offset, weight in zip(range(-radius, radius + 1), kernel):
+#             j = i + offset
+
+#             if 0 <= j < len(values):
+#                 acc += values[j] * weight
+#                 weight_sum += weight
+
+#         result.append(acc / weight_sum)
+
+#     return result
+
+
 def graphic_solo(x, y, x_label, y_label, ax):# Функция для вывода графика с одной функцией
   ax.plot(x, y, color="blue")
   ax.set_xlabel(x_label)
@@ -280,8 +321,12 @@ def sens_data(port):#Эта функция нужна для того что б�
 
     for n in range(len(power_grid)):
         setting_scan_type(active_source, power_grid, n, ini_config)
-        trigger_single(active_source)
-        trigger_single(passive_device)
+        if port[0] == "T":
+            trigger_single(passive_device)
+            trigger_single(active_source)
+        else:
+            trigger_single(active_source)
+            trigger_single(passive_device)
         wait_opc(active_source)
         wait_opc(passive_device)
         gen_val = taking_fdat(generator)#, "generator"
@@ -295,15 +340,15 @@ def sens_data(port):#Эта функция нужна для того что б�
             correction_coef_list
         )
     data_for_vizualization = [# В этот список мы записываем то что хотим визуализировать, ось x, ось y, подпись к оси x и подпись к оси y
-    (power_grid, correction_coef_list, "Сетка мощностей", "Коэфициенты корреляции"),
+    (power_grid, correction_coef_list, "Сетка мощностей", "Коэфициенты корреляции в db"),
     (power_grid, measured_val, etalon_val,"Сетка мощностей", "fdat c SN9000", "fdat c Obzor804"),
-    (correction_array[0::2], correction_array[1::2], "Измеренные значения", "Коррекционный коэфициент"),
+    (correction_array[0::2], correction_array[1::2], "Измеренные значения в линейном виде(отношения мощностей P1/P0)", "Коррекционный коэфициент в линейном виде"),
     ]
     vizualization_all_pictures(data_for_vizualization, num_cols = 3)
     return correction_array
 
 def db_to_linear(db_value: float): #Перед записью в прибор старая программа переводит dB в линейный вид
-    return 10 ** (db_value / 20.0)
+    return 10 ** (db_value / 20.0) #Возвращает линейное значение мощности (отношения мощностей P1/P0). Параметр - мощность в дБм
 
 def build_correction_array(mesured_db_list, correction_db_list): #Формирует конечный массив для записи в прибор(перед записью, measured и correction переводятся из dB в linear), а так же значения этих 2 массивов чередуются
     if len(mesured_db_list) != len(correction_db_list):
