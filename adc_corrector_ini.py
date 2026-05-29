@@ -159,6 +159,7 @@ def syst_err(instrument):
     answer_on_opc = instrument.query("syst:err?").strip()
     if answer_on_opc != '0,"No error"':
         raise RuntimeError(f"Неожиданный ответ от syst:err?: {answer_on_opc}")
+    return answer_on_opc
 
 def grid_of_powers(power_up: float, power_down: float, points_of_power: int = 125):#Изменение мощности происходит просто определением дельты, и уже после этого мы идем от наибольшей мозности отнимая значение дельты умноженной на номер шага 
     delta_power = (power_up - power_down) / (points_of_power - 1)
@@ -167,8 +168,8 @@ def grid_of_powers(power_up: float, power_down: float, points_of_power: int = 12
 def get_bandwidth_for_zone(num_of_point: int, ini_conf: dict):#Функця определяет какое bandwidth для этой точки(в каком из 3 сегментов находится точка)
     for zones_conf in ini_conf.get("zones"):#функция возвращает настройки для сегмента в котором находится точка
         if zones_conf.get("begin") <= num_of_point <= zones_conf.get("end"):
-            # if num_of_point == zones_conf.get("begin"):
-            #     device.write("sens1:aver:stat 0")
+            # if num_of_point == zones_conf.get("begin"):# В начале каждого сегмента мы должны передавать sens1:aver:stat 0, не уверен что это нужно
+            #     device.write("sens1:aver:stat 0") # sens1:aver:stat устанавливает или считывает состояние ВКЛ/ВЫКЛ усреднения измерений по соседним разверткам.
             #     generator.write("sens1:aver:stat 0")
             return zones_conf.get("bandwidth")
     raise ValueError(f"Не найдена зона для точки {num_of_point}")
@@ -190,11 +191,6 @@ def taking_fdat(instrument):#Эта функция берет список по�
     print(instrument, values)
     return values
 
-def trigger_for_both_inst(inst1, inst2):# Функиця для единичного измерения обоих устройств
-    trigger_single(inst1)
-    trigger_single(inst2)
-    wait_opc(inst1)
-    wait_opc(inst2)
 
 def reduce_fdat(val: list):
     average_weignt = 0
@@ -217,17 +213,13 @@ def setting_scan_type(inst1, inst2, powers_grid: list, num_of_point: int, ini_co
 
 
 def measure_point_t(power_grid, n, ini_config):#функция для измерения T порта
+    setting_scan_type(generator, device, power_grid, n, ini_config)
     syst_err(device)
     trigger_single(device)
-    
-    setting_scan_type(generator, device, power_grid, n, ini_config)
-
-    # Рабочий запуск источника
     trigger_single(generator)
 
     wait_opc(device)
     syst_err(device)
-
     wait_opc(generator)
     syst_err(generator)
 
@@ -240,24 +232,14 @@ def measure_point_t(power_grid, n, ini_config):#функция для измер
     return etalon, measured
 
 def measure_point_r(power_grid, n, ini_config):
-    bandwidth = get_bandwidth_for_zone(n, ini_config)
-    power = power_grid[n]
-
-    print(f"R point {n}: SOURce1:POWer {power:.6e}, IFBW={bandwidth}")
-
-    # SN9000 — источник
     syst_err(device)
     setting_scan_type(device, generator, power_grid, n, ini_config)
-
     trigger_single(device)
-
-    # Obzor804 тоже должен снять точку
     syst_err(generator)
     trigger_single(generator)
 
     wait_opc(device)
     syst_err(device)
-
     wait_opc(generator)
     syst_err(generator)
 
@@ -267,7 +249,7 @@ def measure_point_r(power_grid, n, ini_config):
     etalon = reduce_fdat(gen_val)
     measured = reduce_fdat(dev_val)
 
-    return etalon, measured, bandwidth
+    return etalon, measured
 
 def compute_correction(etalon_i, measured_i, etalon_0, measured_0): #Формула correction из старой программы: corr_i = (etalon_i - measured_i) - (etalon_0 - measured_0)
     return (etalon_i - measured_i) - (etalon_0 - measured_0)
@@ -390,7 +372,6 @@ def receiver_number_from_trace(trace_name: str):    #Возвращает ном
         return 2 + (number - 1) * 2
     raise ValueError(f"Неизвестная трасса: {trace_name}")
 
-
 def send_correction_array(device, trace_name: str, correction_array, dry_run: bool = True): #Отправляет массив коррекции в SN9000
     receiver_number = receiver_number_from_trace(trace_name)
     payload = format_array_for_scpi_old_style(correction_array)
@@ -402,8 +383,7 @@ def send_correction_array(device, trace_name: str, correction_array, dry_run: bo
         print("DRY RUN: команда не отправлена в прибор.")
         return
     device.write(f"SERV:REC{receiver_number}:LIN:DATA {payload}")
-    time.sleep(4.0)# Старый код ждал 4 секунды после записи.
-    #syst_err(device)#, "after write correction array"
+    time.sleep(2.0)# Старый код ждал 4 секунды после записи.
 
 def main_cycle_changing_r_t():# Цикл для изменения порта R и T, эти порты мы берем из .ini файла
     for i in list(ini_config["receivers"]):
@@ -428,7 +408,6 @@ try:
     generator = open_scpi_resource('TCPIP0::localhost::5025::SOCKET')#device_generator_adreses[0]
     device_idn, generator_idn = get_info() 
     ini_config = load_ini(r"C:\adc-corrector-develop\adc-corrector-develop\System\SN9000-10_2.ini")
-    # prepare_for_work()
     main_cycle_changing_r_t()
 except pyvisa.errors.VisaIOError as e:
     print(e)
