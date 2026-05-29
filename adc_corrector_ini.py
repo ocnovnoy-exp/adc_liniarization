@@ -82,28 +82,28 @@ def get_info():#Получение информации от приборов, �
     print(dev_idn)
     quantity_of_ports = device.query(":SERV:PORT:COUN?")
     print(quantity_of_ports)
-    print(device.query("syst:err?"))
+    print(syst_err(device))
     gen_idn = generator.query("*IDN?").split(", ")
     print(gen_idn)
-    print(generator.query("syst:err?"))
+    print(syst_err(generator))
     device.write("syst:pres")
     device.write("trigger:source BUS")
     device.write("init:cont 1")
     device.write("trigger:wait WAIT")
     device.write("sens:rosc:sour EXT")
-    generator.query("syst:err?")
+    syst_err(generator)
     return dev_idn, gen_idn
 
-list_of_segment_data = [5,0,1,0,0,0,2,936000000,936000000,2,100,936000000,936000000,2,100]
 def device_setup():# Функция в которой мы задаём сегменты для измерения
     device.write("sens1:aver:stat 0")
-    device.write("SENS:SWE:TYPE SEGM")
     set_segment(device, ini_config["frequency"], ini_config["zones"][0]["bandwidth"])
+
     generator.write("sens1:aver:stat 0")
-    generator.write("SENS:SWE:TYPE SEGM")
     set_segment(generator, ini_config["frequency"], ini_config["zones"][0]["bandwidth"])
-    device.query("syst:err?")
-    generator.query("syst:err?")
+
+    syst_err(device)
+    syst_err(generator)
+
 
 def generator_switching_setup():
     generator.write("syst:pres")
@@ -154,10 +154,11 @@ def wait_opc(instrument):
 
 def trigger_single(instrument):
     instrument.write("trig:sing")
-# def syst_err(instrument):
-#     answer_on_opc = instrument.query("syst:err?").strip()
-#     if answer_on_opc != '0,"No error"':
-#         raise RuntimeError(f"Неожиданный ответ от syst:err?: {answer_on_opc}")
+
+def syst_err(instrument):
+    answer_on_opc = instrument.query("syst:err?").strip()
+    if answer_on_opc != '0,"No error"':
+        raise RuntimeError(f"Неожиданный ответ от syst:err?: {answer_on_opc}")
 
 def grid_of_powers(power_up: float, power_down: float, points_of_power: int = 125):#Изменение мощности происходит просто определением дельты, и уже после этого мы идем от наибольшей мозности отнимая значение дельты умноженной на номер шага 
     delta_power = (power_up - power_down) / (points_of_power - 1)
@@ -201,16 +202,72 @@ def reduce_fdat(val: list):
         average_weignt += val[i]
     return average_weignt / (len(val) / 2)
 
-
-def setting_scan_type(instrument, powers_grid: list, num_of_point: int, ini_conf: dict):#Функция необходимая для задания мощности и отправки SENS:SEGM:DATA 2 раза, с bandwidth = 1000 и той что мы берем их .ini файла
+def setting_scan_type(inst1, inst2, powers_grid: list, num_of_point: int, ini_conf: dict):#Функция необходимая для задания мощности и отправки SENS:SEGM:DATA 2 раза, с bandwidth = 1000 и той что мы берем их .ini файла
     power = powers_grid[num_of_point]
     bandwidth = get_bandwidth_for_zone(num_of_point, ini_conf)
     print(f"SOURce1:POWer {power:.6e}       {bandwidth}      {num_of_point}")
-    instrument.write(f"SOURce1:POWer {power:.6e}")
-    set_segment(instrument, ini_conf["frequency"], 1000)
-    trigger_single(instrument)
-    wait_opc(instrument)
-    set_segment(instrument, ini_conf["frequency"], bandwidth)
+    inst1.write(f"SOURce1:POWer {power:.6e}")
+
+    set_segment(inst1, ini_conf["frequency"], 1000)# Быстрый проход только на активном источнике
+    trigger_single(inst1)
+    wait_opc(inst1)
+
+    set_segment(inst1, ini_conf["frequency"], bandwidth)# Рабочий сегмент надо задать ОБОИМ приборам
+    set_segment(inst2, ini_conf["frequency"], bandwidth)
+
+
+def measure_point_t(power_grid, n, ini_config):#функция для измерения T порта
+    syst_err(device)
+    trigger_single(device)
+    
+    setting_scan_type(generator, device, power_grid, n, ini_config)
+
+    # Рабочий запуск источника
+    trigger_single(generator)
+
+    wait_opc(device)
+    syst_err(device)
+
+    wait_opc(generator)
+    syst_err(generator)
+
+    gen_val = taking_fdat(generator)
+    dev_val = taking_fdat(device)
+
+    etalon = reduce_fdat(gen_val)
+    measured = reduce_fdat(dev_val)
+
+    return etalon, measured
+
+def measure_point_r(power_grid, n, ini_config):
+    bandwidth = get_bandwidth_for_zone(n, ini_config)
+    power = power_grid[n]
+
+    print(f"R point {n}: SOURce1:POWer {power:.6e}, IFBW={bandwidth}")
+
+    # SN9000 — источник
+    syst_err(device)
+    setting_scan_type(device, generator, power_grid, n, ini_config)
+
+    trigger_single(device)
+
+    # Obzor804 тоже должен снять точку
+    syst_err(generator)
+    trigger_single(generator)
+
+    wait_opc(device)
+    syst_err(device)
+
+    wait_opc(generator)
+    syst_err(generator)
+
+    gen_val = taking_fdat(generator)
+    dev_val = taking_fdat(device)
+
+    etalon = reduce_fdat(gen_val)
+    measured = reduce_fdat(dev_val)
+
+    return etalon, measured, bandwidth
 
 def compute_correction(etalon_i, measured_i, etalon_0, measured_0): #Формула correction из старой программы: corr_i = (etalon_i - measured_i) - (etalon_0 - measured_0)
     return (etalon_i - measured_i) - (etalon_0 - measured_0)
@@ -263,37 +320,43 @@ def vizualization_all_pictures(data_of_pictures: list, num_cols: int):#На вх
 
 #выбор того кому передаём source1:power зависит от того кто является R
 def sens_data(port):#Эта функция нужна для того что бы пройтись по всем мощностям и записать значения корректировки в массив
-    power_grid = grid_of_powers(ini_config["power_up"], ini_config["power_down"], points_of_power=125)
+    power_grid = grid_of_powers(
+        ini_config["power_up"],
+        ini_config["power_down"],
+        points_of_power=125
+    )
 
     measured_val = []
     etalon_val = []
     correction_coef_list = []
 
-    if port[0] == "T":
-        active_source = generator
-        passive_device = device
-    elif port[0] == "R":
-        active_source = device
-        passive_device = generator
-    else:
-        raise ValueError(f"Неизвестный порт: {port}")
-
     for n in range(len(power_grid)):
-        setting_scan_type(active_source, power_grid, n, ini_config)
-        trigger_single(active_source)
-        trigger_single(passive_device)
-        wait_opc(active_source)
-        wait_opc(passive_device)
-        gen_val = taking_fdat(generator)#, "generator"
-        dev_val = taking_fdat(device)#, "device"
+        if port[0] == "T":
+            etalon, measured = measure_point_t(power_grid, n, ini_config)
+        elif port[0] == "R":
+            etalon, measured = measure_point_r(power_grid, n, ini_config)
+        else:
+            raise ValueError(f"Неизвестный порт: {port}")
 
-        measured_val.append(reduce_fdat(dev_val))
-        etalon_val.append(reduce_fdat(gen_val))
-        correction_coef_list.append(correction(n, etalon_val, measured_val)) #Считаем коэффициенты для коррекции
-        correction_array = build_correction_array(
-            measured_val,
-            correction_coef_list
+        etalon_val.append(etalon)
+        measured_val.append(measured)
+
+
+        corr = correction(n, etalon_val, measured_val)
+        correction_coef_list.append(corr)
+
+        print(
+            f"{port} [{n:03d}] "
+            f"P={power_grid[n]:.6f}, "
+            f"etalon={etalon:.6f}, "
+            f"measured={measured:.6f}, "
+            f"corr={corr:.6f}"
         )
+    correction_array = build_correction_array(
+        measured_val,
+        correction_coef_list
+    )
+
     data_for_vizualization = [# В этот список мы записываем то что хотим визуализировать, ось x, ось y, подпись к оси x и подпись к оси y
     (power_grid, correction_coef_list, "Сетка мощностей", "Коэфициенты корреляции"),
     (power_grid, measured_val, etalon_val,"Сетка мощностей", "fdat c SN9000", "fdat c Obzor804"),
