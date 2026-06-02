@@ -412,16 +412,21 @@ def send_correction_array(device, port: str, correction_array: list, dry_run: bo
     device.write(f"SERV:REC{receiver_number}:LIN:DATA {payload}")
     time.sleep(2.0)# Старый код ждал 4 секунды после записи.
 
+def what_ports_we_need_to_measure():#Функция для отбора портов котороые нам нужно измерить(проты имеется в виду T1, R1, T2, ...)
+    ports_for_measure = []
+    for i in list(ENUMERATION_OF_PORTS):
+        if ENUMERATION_OF_PORTS[i] == 1:
+            ports_for_measure.append(i) 
+    return ports_for_measure
+
 def main_cycle_changing_r_t():# Цикл для изменения порта R и T, эти порты мы берем из .ini файла
-    for i in list(ini_config["receivers"]):
-        if ini_config["receivers"][i] == 1:
-            port = i
-            input(f"Подключте пожалуйста порт {port[1:]} и после введите что то в консоль")
-        else:
-            continue
-        if port[0] == "T":
+    ports_for_measure = what_ports_we_need_to_measure()
+
+    for port in ports_for_measure:
+        input(f"Подключте пожалуйста порт {port[1:]} и после введите что то в консоль")
+        if port == "T":
             setup_for_measurement_t(port)
-        elif port[0] == "R":
+        elif port == "R":
             setup_for_measurement_r(port)
         device_setup()
         correction_values = measure_port(port)
@@ -435,11 +440,13 @@ try:
     NUMBER_OF_POINTS = ini_config["zones"][-1]["end"] - ini_config["zones"][0]["begin"] + 1 #Количество точек во всех сегментах(у нас есть 2 мощности(min, max) и между ними мы делаем столько измерений сколько точек)
     MAX_POWER = ini_config["power_up"]
     MIN_POWER = ini_config["power_down"]
-
+    ENUMERATION_OF_PORTS = ini_config["receivers"]
     device = open_scpi_resource(DEVICE_ADDRESS)#device_generator_adreses[1]
     generator = open_scpi_resource(GENERATOR_ADDRESS)#device_generator_adreses[0]
     device_idn, generator_idn = get_info() 
-    print(device_idn, generator_idn, sep="\n")
+    print(device_idn, 
+          generator_idn, 
+          sep="\n")
     main_cycle_changing_r_t()
 except pyvisa.errors.VisaIOError as e:
     print(e)
