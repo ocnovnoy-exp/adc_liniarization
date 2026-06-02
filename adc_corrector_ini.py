@@ -385,13 +385,17 @@ def send_correction_array(device, trace_name: str, correction_array, dry_run: bo
     device.write(f"SERV:REC{receiver_number}:LIN:DATA {payload}")
     time.sleep(2.0)# Старый код ждал 4 секунды после записи.
 
+def what_ports_we_need_to_measure():
+    ports_for_measure = []
+    for port in list(ini_config["receivers"]):
+        if ini_config["receivers"][port] == 1:
+            ports_for_measure.append(port)
+    return ports_for_measure
+
 def main_cycle_changing_r_t():# Цикл для изменения порта R и T, эти порты мы берем из .ini файла
-    for i in list(ini_config["receivers"]):
-        if ini_config["receivers"][i] == 1:
-            port = i
-            input(f"Подключте пожалуйста порт {port[1:]} и после введите что то в консоль")
-        else:
-            continue
+    ports_for_measure = what_ports_we_need_to_measure()
+    for port in ports_for_measure:
+        input(f"Подключте пожалуйста порт {port[1:]} и после введите что то в консоль")
         if port[0] == "T":
             switching_on_t(port)
         elif port[0] == "R":
