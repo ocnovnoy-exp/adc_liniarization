@@ -4,6 +4,9 @@ import time
 import matplotlib.pyplot as plt
 
 
+DEVICE_ADDRESS = "TCPIP0::localhost::5026::SOCKET"
+GENERATOR_ADDRESS = "TCPIP0::localhost::5025::SOCKET"
+
 rm = pyvisa.ResourceManager() # '@py' необходим для принудительного использования бэкенда не NI-VISA, а pyvisa-py
 print(rm.list_resources('TCPIP?*')) #'?*' это фильтр необходимый для обнаружения нашего адреса устройства, так как бех него будут искаться только приборы, чьи имена заканчиваются на ::INSTR, а наше заканчивется на ::SOCKET
 # Если мы хотим только ::SOCKET, то испольхзуем вот такой фильтр 'TCPIP?*'
@@ -408,10 +411,17 @@ def main_cycle_changing_r_t():# Цикл для изменения порта R 
 try:
     # device_or_generator_func('TCPIP0::localhost::5026::SOCKET')
     # device_or_generator_func('TCPIP0::localhost::5025::SOCKET')
-    device = open_scpi_resource('TCPIP0::localhost::5026::SOCKET')#device_generator_adreses[1]
-    generator = open_scpi_resource('TCPIP0::localhost::5025::SOCKET')#device_generator_adreses[0]
-    device_idn, generator_idn = get_info() 
     ini_config = load_ini(r"C:\adc-corrector-develop\adc-corrector-develop\System\SN9000-10_2.ini")
+    NUMBER_OF_POINTS = ini_config["zones"][-1]["end"] - ini_config["zones"][0]["begin"] + 1 #Количество точек во всех сегментах(у нас есть 2 мощности(min, max) и между ними мы делаем столько измерений сколько точек)
+    MAX_POWER = ini_config["power_up"]
+    MIN_POWER = ini_config["power_down"]
+    ENUMERATION_OF_PORTS = ini_config["receivers"]
+    device = open_scpi_resource(DEVICE_ADDRESS)#device_generator_adreses[1]
+    generator = open_scpi_resource(GENERATOR_ADDRESS)#device_generator_adreses[0]
+    device_idn, generator_idn = get_info() 
+    print(device_idn, 
+          generator_idn, 
+          sep="\n")
     main_cycle_changing_r_t()
 except pyvisa.errors.VisaIOError as e:
     print(e)
