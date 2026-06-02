@@ -82,13 +82,10 @@ def load_ini(path: str):# Загружаем значения для корре�
 def get_info():#Получение информации от приборов, имя, версию и тд.
     dev_idn, gen_idn = [], []
     dev_idn = device.query("*IDN?").split(", ")
-    print(dev_idn)
-    quantity_of_ports = device.query(":SERV:PORT:COUN?")
-    print(quantity_of_ports)
-    print(syst_err(device))
+    device.query(":SERV:PORT:COUN?")
+    syst_err(device)
     gen_idn = generator.query("*IDN?").split(", ")
-    print(gen_idn)
-    print(syst_err(generator))
+    syst_err(generator)
     device.write("syst:pres")
     device.write("trigger:source BUS")
     device.write("init:cont 1")
@@ -112,6 +109,9 @@ def generator_switching_setup():
     generator.write("syst:pres")
     generator.write("calc:par1:def R2")#В логах мы сначала передаем obzor что он R2, а затем что он T2, можно ли обойтись только тем что говорим, что он T2?
     generator.write("calc:par1:spor 2")# !!!!! надо разобарться что с этой командой, где 1, а где 2 ставится
+    generator.write("trigger:source BUS")
+    generator.write("init:cont 1")
+    generator.write("trigger:wait WAIT")
 
 def device_switching_setup():
     device.write("sens:rosc:sour EXT")
@@ -124,27 +124,20 @@ def device_switching_setup():
     device.write("serv:rec:lin:state 0")# Если запускать программу в режиме проверки, то тут будет не 0, а 1
     device.query("serv:rec:lin:state?")
 
-def switching_on_t(port):# Мы передаём сюда порт(когда меняем с R на T) устройства которого мы проверяем, device_port
+def setup_before_measure_t(port):# Мы передаём сюда порт(когда меняем с R на T) устройства которого мы проверяем, device_port
     generator_switching_setup()
     device.write("syst:pres")
     device.write(f"calc:par1:def {port}")
-
     device_spor = 2 if int(port[1:]) == 1 else 1# Вот такие настройки у пчелки, надо попробовать с device_spor = 2 if int(port[1:]) == 1 else 1, при чем попробовать для 4 портов
     device.write(f"calc:par1:spor {device_spor}")
 
-    generator.write("trigger:source BUS")
-    generator.write("init:cont 1")
-    generator.write("trigger:wait WAIT")
     generator.write("outp:state 1")
     device_switching_setup()
 
-def switching_on_r(port):# Мы передаём сюда порт(когда меняем с T на R) устройства которого мы проверяем, device_port
+def setup_before_measure_r(port):# Мы передаём сюда порт(когда меняем с T на R) устройства которого мы проверяем, device_port
     generator_switching_setup()
     device.write("syst:pres")
     device.write(f"calc:par1:def {port}")
-    generator.write("trigger:source BUS")
-    generator.write("init:cont 1")
-    generator.write("trigger:wait WAIT")
     device.write(f"calc:par1:spor {port[1:]}")
     generator.write("calc:par1:def T2")
     generator.write("outp:state 0")
@@ -400,9 +393,9 @@ def main_cycle_changing_r_t():# Цикл для изменения порта R 
     for port in ports_for_measure:
         input(f"Подключте пожалуйста порт {port[1:]} и после введите что то в консоль")
         if port[0] == "T":
-            switching_on_t(port)
+            setup_before_measure_t(port)
         elif port[0] == "R":
-            switching_on_r(port)
+            setup_before_measure_r(port)
         device_setup()
         correction_values = sens_data(port)
         send_correction_array(device, port, correction_values, False)
