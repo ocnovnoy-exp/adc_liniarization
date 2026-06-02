@@ -96,10 +96,10 @@ def get_info():#Получение информации от приборов, �
 
 def device_setup():# Функция в которой мы задаём сегменты для измерения
     device.write("sens1:aver:stat 0")
-    set_segment(device, ini_config["frequency"], ini_config["zones"][0]["bandwidth"])
+    set_segment(device, FREQUENCY, ZONES_FROM_INI[0]["bandwidth"])
 
     generator.write("sens1:aver:stat 0")
-    set_segment(generator, ini_config["frequency"], ini_config["zones"][0]["bandwidth"])
+    set_segment(generator, FREQUENCY, ZONES_FROM_INI[0]["bandwidth"])
 
     syst_err(device)
     syst_err(generator)
@@ -161,8 +161,8 @@ def grid_of_powers():#Изменение мощности происходит �
     delta_power = (MAX_POWER - MIN_POWER) / (NUMBER_OF_POINTS - 1)
     return [MAX_POWER - delta_power * i for i in range(NUMBER_OF_POINTS)]
 
-def get_bandwidth_for_zone(num_of_point: int, ini_conf: dict):#Функця определяет какое bandwidth для этой точки(в каком из 3 сегментов находится точка)
-    for zones_conf in ini_conf.get("zones"):#функция возвращает настройки для сегмента в котором находится точка
+def get_bandwidth_for_zone(num_of_point: int):#Функця определяет какое bandwidth для этой точки(в каком из 3 сегментов находится точка)
+    for zones_conf in ZONES_FROM_INI:#функция возвращает настройки для сегмента в котором находится точка
         if zones_conf.get("begin") <= num_of_point <= zones_conf.get("end"):
             # if num_of_point == zones_conf.get("begin"):# В начале каждого сегмента мы должны передавать sens1:aver:stat 0, не уверен что это нужно
             #     device.write("sens1:aver:stat 0") # sens1:aver:stat устанавливает или считывает состояние ВКЛ/ВЫКЛ усреднения измерений по соседним разверткам.
@@ -194,22 +194,22 @@ def reduce_fdat(val: list):
         average_weignt += val[i]
     return average_weignt / (len(val) / 2)
 
-def setting_scan_type(inst1, inst2, powers_grid: list, num_of_point: int, ini_conf: dict):#Функция необходимая для задания мощности и отправки SENS:SEGM:DATA 2 раза, с bandwidth = 1000 и той что мы берем их .ini файла
+def setting_scan_type(inst1, powers_grid: list, num_of_point: int):#Функция необходимая для задания мощности и отправки SENS:SEGM:DATA 2 раза, с bandwidth = 1000 и той что мы берем их .ini файла
     power = powers_grid[num_of_point]
-    bandwidth = get_bandwidth_for_zone(num_of_point, ini_conf)
+    bandwidth = get_bandwidth_for_zone(num_of_point)
     print(f"SOURce1:POWer {power:.6e}       {bandwidth}      {num_of_point}")
     inst1.write(f"SOURce1:POWer {power:.6e}")
 
-    set_segment(inst1, ini_conf["frequency"], 1000)# Быстрый проход только на активном источнике
+    set_segment(inst1, FREQUENCY, 1000)# Быстрый проход только на активном источнике
     trigger_single(inst1)
     wait_opc(inst1)
 
-    set_segment(inst1, ini_conf["frequency"], bandwidth)# Рабочий сегмент надо задать ОБОИМ приборам
-    set_segment(inst2, ini_conf["frequency"], bandwidth)
+    set_segment(inst1, FREQUENCY, bandwidth)# Рабочий сегмент надо задать ОБОИМ приборам
+#    set_segment(inst2, FREQUENCY, bandwidth)
 
 
-def measure_point_t(power_grid, n, ini_config):#функция для измерения T порта
-    setting_scan_type(generator, device, power_grid, n, ini_config)
+def measure_point_t(power_grid, n):#функция для измерения T порта
+    setting_scan_type(generator, power_grid, n)
     syst_err(device)
     trigger_single(device)
     trigger_single(generator)
@@ -227,9 +227,9 @@ def measure_point_t(power_grid, n, ini_config):#функция для измер
 
     return etalon, measured
 
-def measure_point_r(power_grid, n, ini_config):
+def measure_point_r(power_grid, n):
     syst_err(device)
-    setting_scan_type(device, generator, power_grid, n, ini_config)
+    setting_scan_type(device, power_grid, n)
     trigger_single(device)
     syst_err(generator)
     trigger_single(generator)
@@ -306,9 +306,9 @@ def sens_data(port):#Эта функция нужна для того что б�
 
     for n in range(len(power_grid)):
         if port[0] == "T":
-            etalon, measured = measure_point_t(power_grid, n, ini_config)
+            etalon, measured = measure_point_t(power_grid, n)
         elif port[0] == "R":
-            etalon, measured = measure_point_r(power_grid, n, ini_config)
+            etalon, measured = measure_point_r(power_grid, n)
         else:
             raise ValueError(f"Неизвестный порт: {port}")
 
@@ -379,8 +379,8 @@ def send_correction_array(device, trace_name: str, correction_array, dry_run: bo
 
 def what_ports_we_need_to_measure():
     ports_for_measure = []
-    for port in list(ini_config["receivers"]):
-        if ini_config["receivers"][port] == 1:
+    for port in list(ENUMERATION_OF_PORTS):
+        if ENUMERATION_OF_PORTS[port] == 1:
             ports_for_measure.append(port)
     return ports_for_measure
 
@@ -407,6 +407,8 @@ try:
     ENUMERATION_OF_PORTS = ini_config["receivers"]
     device = open_scpi_resource(DEVICE_ADDRESS)#device_generator_adreses[1]
     generator = open_scpi_resource(GENERATOR_ADDRESS)#device_generator_adreses[0]
+    FREQUENCY = ini_config["frequency"]
+    ZONES_FROM_INI = ini_config["zones"]
     device_idn, generator_idn = get_info() 
     print(device_idn, 
           generator_idn, 
