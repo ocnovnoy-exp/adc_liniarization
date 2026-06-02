@@ -157,9 +157,9 @@ def syst_err(instrument):
         raise RuntimeError(f"Неожиданный ответ от syst:err?: {answer_on_opc}")
     return answer_on_opc
 
-def grid_of_powers(power_up: float, power_down: float, points_of_power: int = 125):#Изменение мощности происходит просто определением дельты, и уже после этого мы идем от наибольшей мозности отнимая значение дельты умноженной на номер шага 
-    delta_power = (power_up - power_down) / (points_of_power - 1)
-    return [power_up - delta_power * i for i in range(points_of_power)]
+def grid_of_powers():#Изменение мощности происходит просто определением дельты, и уже после этого мы идем от наибольшей мозности отнимая значение дельты умноженной на номер шага 
+    delta_power = (MAX_POWER - MIN_POWER) / (NUMBER_OF_POINTS - 1)
+    return [MAX_POWER - delta_power * i for i in range(NUMBER_OF_POINTS)]
 
 def get_bandwidth_for_zone(num_of_point: int, ini_conf: dict):#Функця определяет какое bandwidth для этой точки(в каком из 3 сегментов находится точка)
     for zones_conf in ini_conf.get("zones"):#функция возвращает настройки для сегмента в котором находится точка
@@ -298,11 +298,7 @@ def vizualization_all_pictures(data_of_pictures: list, num_cols: int):#На вх
 
 #выбор того кому передаём source1:power зависит от того кто является R
 def sens_data(port):#Эта функция нужна для того что бы пройтись по всем мощностям и записать значения корректировки в массив
-    power_grid = grid_of_powers(
-        ini_config["power_up"],
-        ini_config["power_down"],
-        points_of_power=125
-    )
+    power_grid = grid_of_powers()
 
     measured_val = []
     etalon_val = []
