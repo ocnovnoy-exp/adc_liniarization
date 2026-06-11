@@ -6,7 +6,7 @@ GUI для основного режима, который ИМПОРТИРУЕ�
 
 Файлы рядом:
     adc_corrector_ini.py  — твоя программа, сделанная импортируемой
-    adc_gui_import_adapter_port_prompt.py        — адаптер между GUI и твоими функциями
+    adc_corrector_adapter_for_gui.py        — адаптер между GUI и твоими функциями
     adc_corrector_gui_import_no_main_ports.py      — этот GUI
 
 Если хочешь использовать свой файл с другим именем, выбери его через File -> Open user program.
@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
-from adc_gui_import_adapter_port_prompt import ImportCoreSession, ScanPoint, read_ports_from_ini, load_ini_safe
+from adc_corrector_adapter_for_gui import ImportCoreSession, ScanPoint, read_ports_from_ini, load_ini_safe
 
 DEFAULT_CORE_FILE = "adc_corrector_ini.py"
 PORT_COUNT = 16
