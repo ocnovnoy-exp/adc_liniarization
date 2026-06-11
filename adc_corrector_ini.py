@@ -12,7 +12,7 @@ print(rm.list_resources('TCPIP?*')) #'?*' это фильтр необходим
 # Если мы хотим только ::SOCKET, то испольхзуем вот такой фильтр 'TCPIP?*'
 
 device_generator_adreses = ["", ""] #Список для записи адрессов generator и device
-list_of_adc = ["SN9000-10"] #Список для устройств которые являются device, а не generator, и это значит мы должны спрашивать количество их портов
+list_of_adc = ["SN9000-6", "SN9000-10"] #Список для устройств которые являются device, а не generator, и это значит мы должны спрашивать количество их портов
 
 def open_scpi_resource(address: str):
     inst = rm.open_resource(address)
@@ -24,7 +24,7 @@ def open_scpi_resource(address: str):
 def check_adress(adres: str):# Функиця которую следует использоавть вместо rm.list_resources('TCPIP?*'), потому что она выдаёт неправильные порты
     try:
         instrument = open_scpi_resource(adres)
-        name = instrument.query("*IDN?").strip()
+        name = name_of_instrument(instrument).strip()
         print(f"{adres} --> {name}")
         instrument.close()
     except Exception as e:
@@ -36,9 +36,12 @@ def check_adress(adres: str):# Функиця которую следует ис
             except Exception:
                 pass
 
+def name_of_instrument(instrument):
+    return instrument.query("*IDN?")
+
 def device_or_generator_func(adres):#Эта функция нам нужна только для того что бы определить что за устройство мы подключили, generator или device
     instrument = rm.open_resource(adres)
-    if instrument.query("*IDN?").split(", ")[1] in list_of_adc:#Тут мы разделяем строку которую нам возвращает *IDN?, и смотрим что это за устройство, есть лиона в списке list_of_adc
+    if name_of_instrument(instrument).split(", ")[1] in list_of_adc:#Тут мы разделяем строку которую нам возвращает *IDN?, и смотрим что это за устройство, есть лиона в списке list_of_adc
         device_generator_adreses[1] = adres
         instrument.close()
         return
@@ -81,10 +84,10 @@ def load_ini(path: str):# Загружаем значения для корре�
 
 def get_info():#Получение информации от приборов, имя, версию и тд.
     dev_idn, gen_idn = [], []
-    dev_idn = device.query("*IDN?").split(", ")
+    dev_idn = name_of_instrument(device).split(", ")
     device.query(":SERV:PORT:COUN?")
     syst_err(device)
-    gen_idn = generator.query("*IDN?").split(", ")
+    gen_idn = name_of_instrument(generator).split(", ")
     syst_err(generator)
     device.write("syst:pres")
     device.write("trigger:source BUS")
@@ -395,26 +398,32 @@ def main_cycle_changing_r_t():# Цикл для изменения порта R 
         device_setup()
         correction_values = sens_data(port)
         send_correction_array(device, port, correction_values, False)
-        
 
-try:
-    # device_or_generator_func('TCPIP0::localhost::5026::SOCKET')
-    # device_or_generator_func('TCPIP0::localhost::5025::SOCKET')
-    ini_config = load_ini(r"C:\adc-corrector-develop\adc-corrector-develop\System\SN9000-10_2.ini")
-    NUMBER_OF_POINTS = ini_config["zones"][-1]["end"] - ini_config["zones"][0]["begin"] + 1 #Количество точек во всех сегментах(у нас есть 2 мощности(min, max) и между ними мы делаем столько измерений сколько точек)
+# === ДОБАВЛЕНО ТОЛЬКО ДЛЯ ИМПОРТА / CLI-ЗАПУСКА ===
+# Раньше основной запуск находился прямо в try-блоке на верхнем уровне файла.
+# Из-за этого GUI не мог импортировать функции: при import сразу начинались измерения.
+# Теперь консольный запуск вынесен в main_cli(), а при импорте функции просто становятся доступными.
+def main_cli(ini_path=r"C:\adc-corrector-develop\adc-corrector-develop\System\SN9000-10_2.ini"):
+    global ini_config, NUMBER_OF_POINTS, MAX_POWER, MIN_POWER, ENUMERATION_OF_PORTS
+    global device, generator, FREQUENCY, ZONES_FROM_INI
+
+    ini_config = load_ini(ini_path)
+    NUMBER_OF_POINTS = ini_config["zones"][-1]["end"] - ini_config["zones"][0]["begin"] + 1
     MAX_POWER = ini_config["power_up"]
     MIN_POWER = ini_config["power_down"]
     ENUMERATION_OF_PORTS = ini_config["receivers"]
-    device = open_scpi_resource(DEVICE_ADDRESS)#device_generator_adreses[1]
-    generator = open_scpi_resource(GENERATOR_ADDRESS)#device_generator_adreses[0]
+    device = open_scpi_resource(DEVICE_ADDRESS)
+    generator = open_scpi_resource(GENERATOR_ADDRESS)
     FREQUENCY = ini_config["frequency"]
     ZONES_FROM_INI = ini_config["zones"]
-    device_idn, generator_idn = get_info() 
-    print(device_idn, 
-          generator_idn, 
-          sep="\n")
+    device_idn, generator_idn = get_info()
+    print(device_idn, generator_idn, sep="\n")
     main_cycle_changing_r_t()
-except pyvisa.errors.VisaIOError as e:
-    print(e)
-    print("Ошибка связанная с портом, pyvisa или чем то подобным")
 
+
+if __name__ == "__main__":
+    try:
+        main_cli()
+    except pyvisa.errors.VisaIOError as e:
+        print(e)
+        print("Ошибка связанная с портом, pyvisa или чем то подобным")
