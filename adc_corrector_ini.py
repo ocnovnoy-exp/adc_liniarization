@@ -403,7 +403,7 @@ def main_cycle_changing_r_t():# Цикл для изменения порта R 
 # Раньше основной запуск находился прямо в try-блоке на верхнем уровне файла.
 # Из-за этого GUI не мог импортировать функции: при import сразу начинались измерения.
 # Теперь консольный запуск вынесен в main_cli(), а при импорте функции просто становятся доступными.
-def main_cli(ini_path=r"C:\adc-corrector-develop\adc-corrector-develop\System\SN9000-10_2.ini"):
+def main_cli(ini_path):
     global ini_config, NUMBER_OF_POINTS, MAX_POWER, MIN_POWER, ENUMERATION_OF_PORTS
     global device, generator, FREQUENCY, ZONES_FROM_INI
 
@@ -423,7 +423,9 @@ def main_cli(ini_path=r"C:\adc-corrector-develop\adc-corrector-develop\System\SN
 
 if __name__ == "__main__":
     try:
-        main_cli()
+        ini_path=r"C:\adc-corrector-develop\adc-corrector-develop\System\SN9000-10_2.ini"
+        print(f"Надо изменить путь до .ini файла, сейчас берется {ini_path}")
+        main_cli(ini_path)
     except pyvisa.errors.VisaIOError as e:
         print(e)
         print("Ошибка связанная с портом, pyvisa или чем то подобным")

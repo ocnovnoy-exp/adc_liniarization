@@ -1,11 +1,11 @@
 
 """
-adc_gui_import_adapter.py
+adc_corrector_adapter_for_gui.py
 
 Адаптер между GUI и ТВОЕЙ программой.
 
 Главная идея:
-    1. GUI импортирует файл с твоей реализацией через importlib.
+    1. В обычном запуске можно импортировать выбранный .py-файл; в EXE используется встроенный модуль.
     2. Основные функции берутся из твоего файла:
        load_ini, open_scpi_resource, set_segment, trigger_single, wait_opc,
        taking_fdat, reduce_fdat, correction, build_correction_array,
@@ -17,13 +17,14 @@ adc_gui_import_adapter.py
 Важно:
     Исходный файл должен быть импортируемым: нижний запуск измерений должен быть под
         if __name__ == "__main__":
-    Если использовать файл adc_corrector_ini_importable.py из архива, это уже сделано.
+    Если использовать файл adc_corrector_ini.py из архива, это уже сделано.
 """
 
 from __future__ import annotations
 
 import csv
 import importlib.util
+import sys
 import re
 import time
 from configparser import ConfigParser
@@ -32,6 +33,10 @@ from pathlib import Path
 from typing import Callable, Optional
 
 import pyvisa
+
+# Прямой импорт нужен PyInstaller: благодаря ему основная программа
+# попадёт внутрь EXE и не будет искаться как отдельный .py-файл во временной папке.
+import adc_corrector_ini as bundled_user_program
 
 VISA_TIMEOUT_MS = 120_000
 
@@ -160,24 +165,29 @@ def physical_port_from_trace(trace: str) -> str:
     return match.group(0) if match else str(trace)
 
 
-def import_user_program(path: str):
+def import_user_program(path: str | None = None):
     """
-    Импортирует твою программу обычным importlib.
+    Возвращает модуль с основной реализацией.
 
-    Требование: в твоём файле нижний запуск должен быть защищён:
-        if __name__ == "__main__":
-            main_cli()
-
-    В архиве есть adc_corrector_ini_importable.py — это твой файл с такой защитой.
+    При обычном запуске из исходников можно передать путь к другому .py-файлу.
+    При запуске собранного EXE используется ``bundled_user_program``, который
+    импортирован выше обычным ``import``. Благодаря этому PyInstaller включает
+    основную программу внутрь EXE и GUI не ищет её в ``_MEIPASS``/Temp.
     """
-    path = str(Path(path).resolve())
-    module_name = "adc_user_program_imported"
-    spec = importlib.util.spec_from_file_location(module_name, path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Не удалось импортировать файл: {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    if path and path != "__bundled__":
+        candidate = Path(path)
+        if candidate.is_file():
+            resolved = str(candidate.resolve())
+            module_name = "adc_user_program_imported"
+            spec = importlib.util.spec_from_file_location(module_name, resolved)
+            if spec is None or spec.loader is None:
+                raise RuntimeError(f"Не удалось импортировать файл: {resolved}")
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return module
+
+    # Стандартный путь для EXE и для запуска файлов из одной папки.
+    return bundled_user_program
 
 
 class ImportCoreSession:
@@ -186,7 +196,7 @@ class ImportCoreSession:
     """
     def __init__(
         self,
-        user_core_path: str,
+        user_core_path: str | None = "__bundled__",
         log_callback: Optional[Callable[[str], None]] = None,
         point_callback: Optional[Callable[[ScanPoint], None]] = None,
         stop_requested: Optional[Callable[[], bool]] = None,

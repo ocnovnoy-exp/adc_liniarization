@@ -7,7 +7,7 @@ GUI для основного режима, который ИМПОРТИРУЕ�
 Файлы рядом:
     adc_corrector_ini.py  — твоя программа, сделанная импортируемой
     adc_corrector_adapter_for_gui.py        — адаптер между GUI и твоими функциями
-    adc_corrector_gui_import_no_main_ports.py      — этот GUI
+    adc_corrector_gui.py      — этот GUI
 
 Если хочешь использовать свой файл с другим именем, выбери его через File -> Open user program.
 Главное условие: в нём нижний запуск должен быть под if __name__ == "__main__".
@@ -32,11 +32,28 @@ from PySide6.QtWidgets import (
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+from matplotlib.ticker import MultipleLocator
 
 from adc_corrector_adapter_for_gui import ImportCoreSession, ScanPoint, read_ports_from_ini, load_ini_safe
 
 DEFAULT_CORE_FILE = "adc_corrector_ini.py"
 PORT_COUNT = 16
+
+
+def application_dir() -> Path:
+    """
+    Папка приложения.
+
+    В режиме PyInstaller --onefile ``__file__`` указывает во временную папку
+    ``_MEIPASS``. Для пользовательских результатов нужна папка самого EXE,
+    поэтому используем ``sys.executable``.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+APP_DIR = application_dir()
 
 
 def clean_int_text(text: str, fallback: int = 0) -> str:
@@ -238,7 +255,11 @@ class CalibrationWorker(QObject):
             )
             session.configure_from_ini(self.ini_path)
             session.connect(self.ip, self.gen_port, self.dev_port)
-            session.run_calibration_ports(self.traces, dry_run=self.dry_run, output_dir="results")
+            session.run_calibration_ports(
+                self.traces,
+                dry_run=self.dry_run,
+                output_dir=str(APP_DIR / "results"),
+            )
         except Exception:
             self.error.emit(traceback.format_exc())
         finally:
@@ -260,8 +281,15 @@ class MainWindow(QMainWindow):
         self._build_ui()
 
     def _default_core_path(self) -> str:
+        """
+        В исходниках возвращает путь к .py-файлу, если он лежит рядом.
+        В EXE возвращает специальную метку: адаптер возьмёт модуль, уже
+        встроенный PyInstaller, и не будет искать файл во временной папке.
+        """
+        if getattr(sys, "frozen", False):
+            return "__bundled__"
         p = Path(__file__).with_name(DEFAULT_CORE_FILE)
-        return str(p) if p.exists() else ""
+        return str(p) if p.exists() else "__bundled__"
 
     def _build_ui(self):
         file_menu = self.menuBar().addMenu("File")
@@ -309,10 +337,118 @@ class MainWindow(QMainWindow):
         parent_layout.addWidget(box); return fields
 
     def _init_plot(self):
-        self.ax.clear(); self.ax.set_xlabel("Power, dBm"); self.ax.set_ylabel("Correction / Deviation, dB")
-        self.ax.grid(True, alpha=0.4); self.ax.axhline(0, color="gray", linewidth=0.8)
-        self.ax.axhline(0.5, color="red", linewidth=1.0, label="HighLimit"); self.ax.axhline(-0.5, color="red", linewidth=1.0, label="LowLimit")
-        self.ax.legend(); self.canvas.draw_idle(); self.trace_lines.clear(); self.trace_data.clear()
+        """
+        Настраивает график.
+
+        Пределы оси X берутся из ini:
+            [Settings]
+            PowerUpLimit
+            PowerDownLimit
+
+        Пока ini не выбран, используются значения по умолчанию:
+            от -45 до +10 дБм.
+        """
+
+        self.ax.clear()
+
+        # Значения по умолчанию используются при первом запуске GUI,
+        # когда пользователь ещё не выбрал ini-файл.
+        power_up = 10.0
+        power_down = -45.0
+
+        # Если ini уже выбран, читаем пределы мощности из него.
+        if self.ini_path:
+            try:
+                ini_config = load_ini_safe(self.ini_path)
+
+                power_up = float(ini_config["power_up"])
+                power_down = float(ini_config["power_down"])
+
+                self.append_log(
+                    f"Пределы графика из ini: "
+                    f"{power_down} ... {power_up} dBm"
+                )
+
+            except Exception as exc:
+                self.append_log(
+                    "WARNING: не удалось прочитать пределы мощности "
+                    f"из ini: {exc}. Используются значения "
+                    f"{power_down} ... {power_up} dBm"
+                )
+
+        # Подписи осей.
+        self.ax.set_xlabel("Power, dBm")
+        self.ax.set_ylabel("Correction / Deviation, dB")
+
+        # Устанавливаем пределы мощности из ini.
+        # min/max защищают от неправильного порядка значений.
+        self.ax.set_xlim(
+            min(power_down, power_up),
+            max(power_down, power_up)
+        )
+
+        # Запрещаем Matplotlib автоматически менять ось X.
+        self.ax.set_autoscalex_on(False)
+
+        # Основные деления по мощности через 5 дБм.
+        self.ax.xaxis.set_major_locator(MultipleLocator(5))
+
+        # Дополнительные деления по мощности через 1 дБм.
+        self.ax.xaxis.set_minor_locator(MultipleLocator(1))
+
+        # Основные деления по вертикальной оси через 0.1 дБ.
+        self.ax.yaxis.set_major_locator(MultipleLocator(0.1))
+
+        # Дополнительные деления по вертикальной оси через 0.02 дБ.
+        self.ax.yaxis.set_minor_locator(MultipleLocator(0.02))
+
+        # Основная сетка.
+        self.ax.grid(
+            True,
+            which="major",
+            linewidth=0.8,
+            alpha=0.55
+        )
+
+        # Дополнительная мелкая сетка.
+        self.ax.grid(
+            True,
+            which="minor",
+            linewidth=0.4,
+            linestyle=":",
+            alpha=0.3
+        )
+
+        # Нулевая линия.
+        self.ax.axhline(
+            0,
+            color="gray",
+            linewidth=0.9
+        )
+
+        # Верхний допустимый предел.
+        self.ax.axhline(
+            0.5,
+            color="red",
+            linewidth=1.0,
+            label="HighLimit"
+        )
+
+        # Нижний допустимый предел.
+        self.ax.axhline(
+            -0.5,
+            color="red",
+            linewidth=1.0,
+            label="LowLimit"
+        )
+
+        self.ax.legend()
+
+        # Очищаем данные старых проходов.
+        self.trace_lines.clear()
+        self.trace_data.clear()
+
+        self.canvas.draw_idle()
 
     def append_log(self, text: str):
         self.log_box.appendPlainText(str(text))
@@ -326,7 +462,19 @@ class MainWindow(QMainWindow):
     def open_ini(self):
         path, _ = QFileDialog.getOpenFileName(self, "Open ini", "", "INI files (*.ini);;All files (*.*)")
         if path:
-            self.ini_path = path; self.ini_label.setText(Path(path).name); self.load_ports()
+            # Сохраняем путь к выбранному ini.
+            self.ini_path = path
+
+            # Показываем имя файла в главном окне.
+            self.ini_label.setText(Path(path).name)
+
+            # Загружаем частоты и выбранные порты.
+            self.load_ports()
+
+            # Перестраиваем график:
+            # PowerUpLimit и PowerDownLimit будут взяты из выбранного ini.
+            self._init_plot()
+
             self.append_log(f"INI selected: {path}")
 
     def open_core(self):
@@ -340,7 +488,13 @@ class MainWindow(QMainWindow):
         dlg = DeviceSettingsDialog(self.ini_path, self)
         if dlg.exec() == QDialog.Accepted:
             self.append_log("Device settings saved to ini")
+
+            # Перечитываем частоты и список портов.
             self.load_ports()
+
+            # Перечитываем PowerUpLimit и PowerDownLimit
+            # и сразу обновляем границы графика.
+            self._init_plot()
 
     def load_ports(self):
         """
@@ -483,7 +637,8 @@ class MainWindow(QMainWindow):
             self.trace_lines[point.trace] = line; self.ax.legend()
         else:
             line = self.trace_lines[point.trace]; line.set_data(data[0], data[1])
-        self.ax.relim(); self.ax.autoscale_view(); self.canvas.draw_idle()
+        #self.ax.relim(); self.ax.autoscale_view(); 
+        self.canvas.draw_idle()
         self.progress.setValue(int(point.index / point.total * 100))
 
 
