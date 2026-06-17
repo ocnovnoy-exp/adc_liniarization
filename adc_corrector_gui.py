@@ -22,6 +22,7 @@ import threading
 from configparser import ConfigParser
 from pathlib import Path
 
+from PySide6.QtGui import QAction, QIcon
 from PySide6.QtCore import QObject, QThread, Signal, Qt
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QDialog, QFileDialog, QFormLayout, QGroupBox,
@@ -38,6 +39,23 @@ from adc_corrector_adapter_for_gui import ImportCoreSession, ScanPoint, read_por
 
 DEFAULT_CORE_FILE = "adc_corrector_ini.py"
 PORT_COUNT = 16
+
+# === ПУТЬ К РЕСУРСАМ ДЛЯ PYTHON И EXE ===
+def resource_path(filename: str) -> Path:
+    """
+    Возвращает правильный путь к картинке или другому ресурсу.
+
+    При обычном запуске Python-файла ресурс ищется рядом с .py.
+
+    При запуске EXE, собранного через PyInstaller --onefile,
+    ресурс извлекается во временную папку sys._MEIPASS.
+    """
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        base_path = Path(sys._MEIPASS)
+    else:
+        base_path = Path(__file__).resolve().parent
+
+    return base_path / filename
 
 
 def application_dir() -> Path:
@@ -644,7 +662,18 @@ class MainWindow(QMainWindow):
 
 def main():
     app = QApplication(sys.argv)
-    win = MainWindow(); win.show()
+
+    # Значок приложения:
+    # отображается у окна и на панели задач Windows.
+    icon_path = resource_path("app_icon.ico")
+    app.setWindowIcon(QIcon(str(icon_path)))
+
+    window = MainWindow()
+
+    # Дополнительно устанавливаем значок непосредственно главному окну.
+    window.setWindowIcon(QIcon(str(icon_path)))
+
+    window.show()
     sys.exit(app.exec())
 
 
