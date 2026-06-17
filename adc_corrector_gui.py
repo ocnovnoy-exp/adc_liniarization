@@ -5,12 +5,12 @@ adc_corrector_gui_import_no_main_ports.py
 GUI для основного режима, который ИМПОРТИРУЕТ твою программу и вызывает её функции.
 
 Файлы рядом:
-    adc_corrector_ini.py  — твоя программа, сделанная импортируемой
-    adc_corrector_adapter_for_gui.py        — адаптер между GUI и твоими функциями
-    adc_corrector_gui.py      — этот GUI
+    adc_corrector_ini.py                 — основная программа
+    adc_corrector_adapter_for_gui.py     — адаптер между GUI и основной программой
+    adc_corrector_gui.py                 — этот GUI
 
-Если хочешь использовать свой файл с другим именем, выбери его через File -> Open user program.
-Главное условие: в нём нижний запуск должен быть под if __name__ == "__main__".
+Основная программа подключается автоматически через адаптер.
+Пункт выбора отдельного Python-файла из меню удалён.
 """
 
 from __future__ import annotations
@@ -22,8 +22,8 @@ import threading
 from configparser import ConfigParser
 from pathlib import Path
 
-from PySide6.QtGui import QAction, QIcon
 from PySide6.QtCore import QObject, QThread, Signal, Qt
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QDialog, QFileDialog, QFormLayout, QGroupBox,
     QHBoxLayout, QLabel, QLineEdit, QMainWindow,
@@ -37,25 +37,18 @@ from matplotlib.ticker import MultipleLocator
 
 from adc_corrector_adapter_for_gui import ImportCoreSession, ScanPoint, read_ports_from_ini, load_ini_safe
 
-DEFAULT_CORE_FILE = "adc_corrector_ini.py"
 PORT_COUNT = 16
 
-# === ПУТЬ К РЕСУРСАМ ДЛЯ PYTHON И EXE ===
+
+
 def resource_path(filename: str) -> Path:
     """
-    Возвращает правильный путь к картинке или другому ресурсу.
-
-    При обычном запуске Python-файла ресурс ищется рядом с .py.
-
-    При запуске EXE, собранного через PyInstaller --onefile,
-    ресурс извлекается во временную папку sys._MEIPASS.
+    Возвращает путь к ресурсу при запуске из Python и из PyInstaller EXE.
+    В режиме --onefile встроенные файлы распаковываются в sys._MEIPASS.
     """
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        base_path = Path(sys._MEIPASS)
-    else:
-        base_path = Path(__file__).resolve().parent
-
-    return base_path / filename
+        return Path(sys._MEIPASS) / filename
+    return Path(__file__).resolve().parent / filename
 
 
 def application_dir() -> Path:
@@ -118,10 +111,13 @@ class DeviceSettingsDialog(QDialog):
             begin = QLineEdit(self.cfg.get(sec, "AverageBeginPoint", fallback="0"))
             end = QLineEdit(self.cfg.get(sec, "AverageEndPoint", fallback="0"))
             band = QLineEdit(self.cfg.get(sec, "AverageBand", fallback="1"))
-            avg = QLineEdit(self.cfg.get(sec, "AverageCount", fallback="1"))
-            form.addRow("Begin", begin); form.addRow("End", end)
-            form.addRow("Bandwidth", band); form.addRow("Averaging", avg)
-            self.zone_edits.append((sec, begin, end, band, avg))
+            form.addRow("Begin", begin)
+            form.addRow("End", end)
+            form.addRow("Bandwidth", band)
+
+            # AverageCount остаётся в ini для совместимости с основной программой,
+            # но больше не показывается и не редактируется в Device settings.
+            self.zone_edits.append((sec, begin, end, band))
             zones_layout.addWidget(box)
         main.addLayout(zones_layout)
 
@@ -179,13 +175,18 @@ class DeviceSettingsDialog(QDialog):
         self.cfg.set("Settings", "PowerUpLimit", self.max_power.text().strip())
         self.cfg.set("Settings", "PowerDownLimit", self.min_power.text().strip())
         self.cfg.set("Settings", "Limits", self.limit.text().strip())
-        for sec, begin, end, band, avg in self.zone_edits:
+        for sec, begin, end, band in self.zone_edits:
             if not self.cfg.has_section(sec):
                 self.cfg.add_section(sec)
             self.cfg.set(sec, "AverageBeginPoint", clean_int_text(begin.text(), 0))
             self.cfg.set(sec, "AverageEndPoint", clean_int_text(end.text(), 0))
             self.cfg.set(sec, "AverageBand", clean_int_text(band.text(), 1))
-            self.cfg.set(sec, "AverageCount", clean_int_text(avg.text(), 1))
+
+            # Поле Averaging удалено из интерфейса.
+            # Если AverageCount уже есть в ini, оставляем его без изменений.
+            # Если его нет, создаём безопасное значение по умолчанию.
+            if not self.cfg.has_option(sec, "AverageCount"):
+                self.cfg.set(sec, "AverageCount", "1")
         for name, cb in self.port_checks.items():
             self.cfg.set("ReceiverSettings", f"Receiver{name}", "1" if cb.isChecked() else "0")
         with open(self.ini_path, "w", encoding="utf-8") as f:
@@ -292,31 +293,26 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("ADC Nonlinearity Corrector")
         self.resize(1300, 760)
         self.ip = "127.0.0.1"; self.gen_port = 5025; self.dev_port = 5026
-        self.ini_path = ""; self.core_path = self._default_core_path()
+        self.ini_path = ""
+        self.core_path = "__bundled__"  # основная программа подключается автоматически
         self.worker_thread = None; self.worker = None
         self.trace_lines = {}
         self.trace_data = {}
         self._build_ui()
 
-    def _default_core_path(self) -> str:
-        """
-        В исходниках возвращает путь к .py-файлу, если он лежит рядом.
-        В EXE возвращает специальную метку: адаптер возьмёт модуль, уже
-        встроенный PyInstaller, и не будет искать файл во временной папке.
-        """
-        if getattr(sys, "frozen", False):
-            return "__bundled__"
-        p = Path(__file__).with_name(DEFAULT_CORE_FILE)
-        return str(p) if p.exists() else "__bundled__"
-
     def _build_ui(self):
         file_menu = self.menuBar().addMenu("File")
-        open_ini = file_menu.addAction("Open ini..."); open_ini.triggered.connect(self.open_ini)
-        open_core = file_menu.addAction("Open user program..."); open_core.triggered.connect(self.open_core)
+        open_ini = file_menu.addAction("Open ini...")
+        open_ini.triggered.connect(self.open_ini)
+
         settings = self.menuBar().addMenu("Settings")
-        common = settings.addAction("Common settings"); common.triggered.connect(self.open_common_settings)
-        device = settings.addAction("Device setting"); device.triggered.connect(self.open_device_settings)
-        self.menuBar().addMenu("Help")
+        common = settings.addAction("Common settings")
+        common.triggered.connect(self.open_common_settings)
+        device = settings.addAction("Device setting")
+        device.triggered.connect(self.open_device_settings)
+
+        # Пункты Open user program... и Help удалены.
+        # Основная программа подключается автоматически через адаптер.
 
         root = QWidget(); self.setCentralWidget(root); main = QHBoxLayout(root)
         left = QVBoxLayout(); main.addLayout(left, 0)
@@ -330,13 +326,16 @@ class MainWindow(QMainWindow):
         # Теперь порты выбираются только в Settings -> Device setting,
         # а при запуске GUI читает включённые ReceiverT/ReceiverR из ini.
 
-        self.continued_cb = QCheckBox("Continued device searching"); left.addWidget(self.continued_cb)
+        # Continued device searching удалён из интерфейса.
 
         # Dry run убран из интерфейса и выключен: теперь запуск выполняет реальную
         # запись коэффициентов в SERV:RECn:LIN:DATA.
         # Запрос смены физического порта также убран из интерфейса и всегда включён.
 
-        buttons = QHBoxLayout(); self.search_btn = QPushButton("Search"); self.start_btn = QPushButton("Start"); self.stop_btn = QPushButton("Stop")
+        buttons = QHBoxLayout()
+        self.search_btn = QPushButton("Search (*IDN?)")
+        self.start_btn = QPushButton("Start")
+        self.stop_btn = QPushButton("Stop")
         self.search_btn.clicked.connect(self.search_devices); self.start_btn.clicked.connect(self.start_calibration); self.stop_btn.clicked.connect(self.stop_worker)
         buttons.addWidget(self.search_btn); buttons.addWidget(self.start_btn); buttons.addWidget(self.stop_btn); left.addLayout(buttons)
         self.progress = QProgressBar(); left.addWidget(self.progress)
@@ -364,109 +363,94 @@ class MainWindow(QMainWindow):
             PowerDownLimit
 
         Пока ini не выбран, используются значения по умолчанию:
-            от -45 до +10 дБм.
+            -45 ... +10 dBm.
         """
-
         self.ax.clear()
 
-        # Значения по умолчанию используются при первом запуске GUI,
-        # когда пользователь ещё не выбрал ini-файл.
+        # Оставляем свободную область справа от осей под список каналов.
+        # Легенда будет находиться внутри виджета Matplotlib, но уже вне
+        # прямоугольной области самого графика и не будет перекрывать линии.
+        self.figure.subplots_adjust(
+            left=0.08,
+            right=0.82,
+            bottom=0.11,
+            top=0.96,
+        )
+
         power_up = 10.0
         power_down = -45.0
+        limit = 0.5
 
-        # Если ini уже выбран, читаем пределы мощности из него.
         if self.ini_path:
             try:
-                ini_config = load_ini_safe(self.ini_path)
-
-                power_up = float(ini_config["power_up"])
-                power_down = float(ini_config["power_down"])
-
-                self.append_log(
-                    f"Пределы графика из ini: "
-                    f"{power_down} ... {power_up} dBm"
-                )
-
+                cfg = load_ini_safe(self.ini_path)
+                power_up = float(cfg.get("power_up", power_up))
+                power_down = float(cfg.get("power_down", power_down))
+                limit = float(cfg.get("limits", limit))
             except Exception as exc:
-                self.append_log(
-                    "WARNING: не удалось прочитать пределы мощности "
-                    f"из ini: {exc}. Используются значения "
-                    f"{power_down} ... {power_up} dBm"
-                )
+                # Ошибка чтения ini не должна мешать запуску GUI.
+                if hasattr(self, "log_box"):
+                    self.append_log(f"WARNING: plot settings from ini were not loaded: {exc}")
 
-        # Подписи осей.
         self.ax.set_xlabel("Power, dBm")
         self.ax.set_ylabel("Correction / Deviation, dB")
 
-        # Устанавливаем пределы мощности из ini.
-        # min/max защищают от неправильного порядка значений.
-        self.ax.set_xlim(
-            min(power_down, power_up),
-            max(power_down, power_up)
-        )
-
-        # Запрещаем Matplotlib автоматически менять ось X.
+        self.ax.set_xlim(min(power_down, power_up), max(power_down, power_up))
+        self.ax.set_ylim(-limit - 0.05, limit + 0.05)
         self.ax.set_autoscalex_on(False)
+        self.ax.set_autoscaley_on(False)
 
-        # Основные деления по мощности через 5 дБм.
+        # Более подробная сетка:
+        # основные линии по X через 5 dBm, дополнительные через 1 dBm;
+        # основные линии по Y через 0.1 dB, дополнительные через 0.02 dB.
         self.ax.xaxis.set_major_locator(MultipleLocator(5))
-
-        # Дополнительные деления по мощности через 1 дБм.
         self.ax.xaxis.set_minor_locator(MultipleLocator(1))
-
-        # Основные деления по вертикальной оси через 0.1 дБ.
         self.ax.yaxis.set_major_locator(MultipleLocator(0.1))
-
-        # Дополнительные деления по вертикальной оси через 0.02 дБ.
         self.ax.yaxis.set_minor_locator(MultipleLocator(0.02))
 
-        # Основная сетка.
-        self.ax.grid(
-            True,
-            which="major",
-            linewidth=0.8,
-            alpha=0.55
-        )
+        self.ax.grid(True, which="major", linewidth=0.8, alpha=0.55)
+        self.ax.grid(True, which="minor", linewidth=0.35, linestyle=":", alpha=0.28)
 
-        # Дополнительная мелкая сетка.
-        self.ax.grid(
-            True,
-            which="minor",
-            linewidth=0.4,
-            linestyle=":",
-            alpha=0.3
-        )
+        self.ax.axhline(0, color="gray", linewidth=0.8)
+        self.ax.axhline(limit, color="red", linewidth=1.0, label="HighLimit")
+        self.ax.axhline(-limit, color="red", linewidth=1.0, label="LowLimit")
 
-        # Нулевая линия.
-        self.ax.axhline(
-            0,
-            color="gray",
-            linewidth=0.9
-        )
-
-        # Верхний допустимый предел.
-        self.ax.axhline(
-            0.5,
-            color="red",
-            linewidth=1.0,
-            label="HighLimit"
-        )
-
-        # Нижний допустимый предел.
-        self.ax.axhline(
-            -0.5,
-            color="red",
-            linewidth=1.0,
-            label="LowLimit"
-        )
-
-        self.ax.legend()
-
-        # Очищаем данные старых проходов.
+        self._update_legend()
         self.trace_lines.clear()
         self.trace_data.clear()
-
         self.canvas.draw_idle()
+
+    def _update_legend(self):
+        """
+        Размещает список каналов справа от области графика.
+
+        Параметры подобраны так, чтобы в один вертикальный столбец
+        помещались каналы вплоть до T16/R16. Маленький шрифт применяется
+        только к легенде и не уменьшает подписи осей или журнал программы.
+        """
+        handles, labels = self.ax.get_legend_handles_labels()
+
+        if not handles:
+            return
+
+        self.ax.legend(
+            handles,
+            labels,
+            # Легенда располагается справа, за пределами области осей.
+            loc="upper left",
+            bbox_to_anchor=(1.01, 1.0),
+            borderaxespad=0.0,
+            # Все элементы выводятся одним вертикальным столбцом.
+            ncol=1,
+            # Уменьшенный шрифт позволяет разместить большое число каналов.
+            fontsize=7,
+            frameon=True,
+            handlelength=1.8,
+            handletextpad=0.4,
+            labelspacing=0.15,
+            borderpad=0.3,
+            columnspacing=0.5,
+        )
 
     def append_log(self, text: str):
         self.log_box.appendPlainText(str(text))
@@ -480,25 +464,11 @@ class MainWindow(QMainWindow):
     def open_ini(self):
         path, _ = QFileDialog.getOpenFileName(self, "Open ini", "", "INI files (*.ini);;All files (*.*)")
         if path:
-            # Сохраняем путь к выбранному ini.
             self.ini_path = path
-
-            # Показываем имя файла в главном окне.
             self.ini_label.setText(Path(path).name)
-
-            # Загружаем частоты и выбранные порты.
             self.load_ports()
-
-            # Перестраиваем график:
-            # PowerUpLimit и PowerDownLimit будут взяты из выбранного ini.
             self._init_plot()
-
             self.append_log(f"INI selected: {path}")
-
-    def open_core(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Open user program", "", "Python files (*.py);;All files (*.*)")
-        if path:
-            self.core_path = path; self.append_log(f"User program selected: {path}")
 
     def open_device_settings(self):
         if not self.ini_path:
@@ -506,12 +476,7 @@ class MainWindow(QMainWindow):
         dlg = DeviceSettingsDialog(self.ini_path, self)
         if dlg.exec() == QDialog.Accepted:
             self.append_log("Device settings saved to ini")
-
-            # Перечитываем частоты и список портов.
             self.load_ports()
-
-            # Перечитываем PowerUpLimit и PowerDownLimit
-            # и сразу обновляем границы графика.
             self._init_plot()
 
     def load_ports(self):
@@ -556,17 +521,38 @@ class MainWindow(QMainWindow):
         return read_ports_from_ini(self.ini_path)
 
     def search_devices(self):
-        if not self.core_path:
-            QMessageBox.warning(self, "Core", "Выбери файл основной программы."); return
+        """
+        Кнопка Search открывает оба socket-соединения и отправляет *IDN?
+        на адреса генератора и корректируемого устройства.
+
+        Ответы *IDN? разбираются в адаптере и выводятся в поля Model,
+        Version, Serial и Port.
+        """
+        session = None
         try:
+            self.append_log(
+                f"Search: sending *IDN? to {self.ip}:{self.gen_port} "
+                f"and {self.ip}:{self.dev_port}"
+            )
+
             session = ImportCoreSession(self.core_path, self.append_log)
             if self.ini_path:
                 session.configure_from_ini(self.ini_path)
+
+            # Внутри connect() выполняется instrument.query("*IDN?")
+            # для обоих socket-адресов.
             gen, dev = session.connect(self.ip, self.gen_port, self.dev_port)
-            self._fill_device_fields(self.gen_fields, gen); self._fill_device_fields(self.dev_fields, dev)
-            session.close(); self.append_log("Search done")
+
+            self._fill_device_fields(self.gen_fields, gen)
+            self._fill_device_fields(self.dev_fields, dev)
+            self.append_log("Search (*IDN?) completed")
+
         except Exception:
             QMessageBox.critical(self, "Search error", traceback.format_exc())
+
+        finally:
+            if session is not None:
+                session.close()
 
     def _fill_device_fields(self, fields, info):
         fields["Model"].setText(info.model); fields["Version"].setText(info.version); fields["Serial"].setText(info.serial)
@@ -575,8 +561,6 @@ class MainWindow(QMainWindow):
     def start_calibration(self):
         if not self.ini_path:
             QMessageBox.warning(self, "INI", "Выбери ini-файл."); return
-        if not self.core_path:
-            QMessageBox.warning(self, "Core", "Выбери файл основной программы."); return
         traces = self.selected_traces()
         if not traces:
             QMessageBox.warning(
@@ -652,10 +636,12 @@ class MainWindow(QMainWindow):
         data[0].append(point.source_power_dbm); data[1].append(point.correction_db)
         if point.trace not in self.trace_lines:
             (line,) = self.ax.plot(data[0], data[1], label=point.trace)
-            self.trace_lines[point.trace] = line; self.ax.legend()
+            self.trace_lines[point.trace] = line
+            self._update_legend()
         else:
             line = self.trace_lines[point.trace]; line.set_data(data[0], data[1])
-        #self.ax.relim(); self.ax.autoscale_view(); 
+        # Пределы осей задаются в _init_plot() из ini,
+        # поэтому autoscale здесь не вызывается.
         self.canvas.draw_idle()
         self.progress.setValue(int(point.index / point.total * 100))
 
@@ -663,17 +649,16 @@ class MainWindow(QMainWindow):
 def main():
     app = QApplication(sys.argv)
 
-    # Значок приложения:
-    # отображается у окна и на панели задач Windows.
+    # Значок применяется, только если app_icon.ico добавлен в сборку PyInstaller.
     icon_path = resource_path("app_icon.ico")
-    app.setWindowIcon(QIcon(str(icon_path)))
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
 
-    window = MainWindow()
+    win = MainWindow()
+    if icon_path.exists():
+        win.setWindowIcon(QIcon(str(icon_path)))
 
-    # Дополнительно устанавливаем значок непосредственно главному окну.
-    window.setWindowIcon(QIcon(str(icon_path)))
-
-    window.show()
+    win.show()
     sys.exit(app.exec())
 
 
